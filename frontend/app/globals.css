@@ -39,9 +39,18 @@ button, input { font: inherit; }
 .brand-mark { display: grid; place-items: center; width: 24px; height: 24px; background: var(--aplex-blue); color: #fff; font-weight: 700; }
 .brand-mode { color: #8d8d8d; font: 10px "IBM Plex Mono", monospace; letter-spacing: .1em; }
 .ticker-search { height: 48px; display: grid; grid-template-columns: 1fr auto; border-left: 1px solid #393939; border-right: 1px solid #393939; }
+.search-field { position: relative; min-width: 0; }
 .ticker-search .cds--text-input { height: 47px; background: #262626; color: #fff; border: 0; border-bottom: 2px solid transparent; }
 .ticker-search .cds--text-input:focus { outline: none; border-bottom-color: var(--aplex-blue); }
 .ticker-search .cds--btn { min-height: 47px; }
+.search-results { position: absolute; z-index: 80; top: 48px; left: -1px; right: -1px; max-height: 360px; overflow-y: auto; background: #fff; color: #161616; border: 1px solid #8d8d8d; border-top: 0; box-shadow: 0 8px 20px rgb(0 0 0 / 18%); }
+.search-results button { width: 100%; min-height: 58px; display: grid; grid-template-columns: 66px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 9px 12px; border: 0; border-bottom: 1px solid #e0e0e0; background: #fff; color: #161616; text-align: left; cursor: pointer; }
+.search-results button:hover, .search-results button.is-highlighted { background: #e8f1ff; box-shadow: inset 3px 0 0 var(--aplex-blue); }
+.search-results strong { font: 600 13px "IBM Plex Mono", monospace; }
+.search-results span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.search-results small { color: #6f6f6f; font: 10px "IBM Plex Mono", monospace; }
+.search-results p { margin: 0; padding: 16px; color: #6f6f6f; font-size: 12px; }
+.search-status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .topbar-status { justify-self: end; display: flex; gap: 22px; padding-right: 20px; color: #c6c6c6; font: 11px "IBM Plex Mono", monospace; }
 
 .sidebar {
@@ -231,4 +240,3 @@ button, input { font: inherit; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
-

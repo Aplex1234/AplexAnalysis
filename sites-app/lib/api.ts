@@ -1,2 +1,1 @@
-export { fetchAnalysis, runValuation } from "../../frontend/lib/api";
-
+export { fetchAnalysis, runValuation, searchSecurities } from "../../frontend/lib/api";

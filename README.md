@@ -5,6 +5,7 @@ AplexAnalysis is a transparent equity-research terminal. Enter a US-listed ticke
 ## What works in this milestone
 
 - SEC ticker resolution, Company Facts ingestion and recent 10-K, 10-Q and 8-K links
+- SEC-wide ticker and company autocomplete with exchange-aware stable issuer, security and listing IDs
 - Delayed quote retrieval from Nasdaq's public market activity service
 - SQLite development storage with a PostgreSQL-ready SQLAlchemy model
 - Five-year annual statement normalization with metric-level provenance

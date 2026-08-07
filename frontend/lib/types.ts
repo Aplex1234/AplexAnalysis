@@ -15,6 +15,19 @@ export type FinancialValues = {
   diluted_eps?: number;
 };
 
+export type SecuritySearchResult = {
+  issuer_id: string;
+  security_id: string;
+  listing_id: string;
+  ticker: string;
+  name: string;
+  cik: string;
+  exchange: string;
+  mic: string;
+  security_type: string;
+  coverage: string;
+};
+
 export type FinancialPeriod = {
   fiscal_year: number;
   period_type: string;
@@ -106,4 +119,3 @@ export type DcfAssumptions = {
   wacc: number;
   terminal_growth: number;
 };
-

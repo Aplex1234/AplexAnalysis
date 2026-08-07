@@ -26,6 +26,45 @@ test("server-renders the AplexAnalysis terminal", async () => {
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/);
 });
 
+test("searches the SEC security universe with stable listing identities", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    const url = input instanceof Request ? input.url : String(input);
+    if (url === "https://www.sec.gov/files/company_tickers_exchange.json") {
+      return new Response(JSON.stringify({
+        fields: ["cik", "name", "ticker", "exchange"],
+        data: [
+          [320193, "Apple Inc.", "AAPL", "Nasdaq"],
+          [1652044, "Alphabet Inc.", "GOOG", "Nasdaq"],
+          [1652044, "Alphabet Inc.", "GOOGL", "Nasdaq"],
+          [1067983, "Berkshire Hathaway Inc.", "BRK-B", "NYSE"],
+        ],
+      }), { headers: { "content-type": "application/json" } });
+    }
+    return originalFetch(input, init);
+  };
+
+  try {
+    const workerUrl = new URL("../dist/server/index.js", import.meta.url);
+    workerUrl.searchParams.set("search-test", `${process.pid}-${Date.now()}`);
+    const { default: worker } = await import(workerUrl.href);
+    const response = await worker.fetch(
+      new Request("http://localhost/api/v1/search?q=BRK.B&limit=8"),
+      { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
+      { waitUntil() {}, passThroughOnException() {} },
+    );
+
+    assert.equal(response.status, 200);
+    const payload = await response.json();
+    assert.equal(payload[0].ticker, "BRK-B");
+    assert.equal(payload[0].issuer_id, "sec-cik:0001067983");
+    assert.equal(payload[0].listing_id, "listing:xnys:brk-b");
+    assert.equal(payload[0].mic, "XNYS");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("serves a complete AAPL analysis through the hosted API", async () => {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("api-test", `${process.pid}-${Date.now()}`);

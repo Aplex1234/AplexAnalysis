@@ -16,9 +16,16 @@ class ValuationRequest(BaseModel):
 
 
 class SearchResult(BaseModel):
+    issuer_id: str
+    security_id: str
+    listing_id: str
     ticker: str
     name: str
     cik: str | None = None
+    exchange: str
+    mic: str
+    security_type: str
+    coverage: str
 
 
 class ResearchQuestion(BaseModel):

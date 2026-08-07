@@ -16,17 +16,31 @@ DatabaseSession = Annotated[Session, Depends(get_db)]
 
 
 @router.get("/search", response_model=list[SearchResult])
-def search_companies(q: str = Query(min_length=1, max_length=80)) -> list[dict]:
+def search_companies(
+    q: str = Query(min_length=1, max_length=80),
+    limit: int = Query(default=8, ge=1, le=20),
+) -> list[dict]:
     provider = SecProvider()
     try:
-        return provider.search(q)
+        return provider.search(q, limit=limit)
     except SecProviderError:
-        needle = q.upper()
+        needle = q.upper().strip()
         return [
-            {"ticker": ticker, "name": company["name"], "cik": company["cik"]}
+            {
+                "issuer_id": f"sec-cik:{company['cik']}",
+                "security_id": f"sec-cik:{company['cik']}:equity:{ticker.lower()}",
+                "listing_id": f"listing:xnas:{ticker.lower()}",
+                "ticker": ticker,
+                "name": company["name"],
+                "cik": company["cik"],
+                "exchange": "NASDAQ",
+                "mic": "XNAS",
+                "security_type": "Equity",
+                "coverage": "Bundled fallback",
+            }
             for ticker, company in FALLBACK_COMPANIES.items()
             if ticker.startswith(needle) or needle in company["name"].upper()
-        ]
+        ][:limit]
     finally:
         provider.close()
 

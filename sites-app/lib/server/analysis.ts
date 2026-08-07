@@ -1,3 +1,5 @@
+import { normalizeTicker, resolveSecurity } from "./security-master";
+
 type Values = Record<string, number | undefined>;
 type SecPoint = {
   form?: string;
@@ -13,7 +15,6 @@ type SecCompanyFacts = {
   cik: number | string;
   facts?: { "us-gaap"?: Record<string, SecFact> };
 };
-type SecTickerEntry = { ticker: string; title: string; cik_str: number };
 type CompanyProfile = {
   cik: string;
   name: string;
@@ -460,12 +461,8 @@ async function secData(ticker: string) {
     "User-Agent": process.env.SEC_USER_AGENT ?? "AplexAnalysis/0.1 research@aplexanalysis.app",
     Accept: "application/json",
   };
-  const tickerResponse = await fetch("https://www.sec.gov/files/company_tickers.json", { headers });
-  if (!tickerResponse.ok) throw new Error(`SEC ticker request returned ${tickerResponse.status}`);
-  const tickers = (await tickerResponse.json()) as Record<string, SecTickerEntry>;
-  const identity = Object.values(tickers).find((item) => String(item.ticker).toUpperCase() === ticker);
-  if (!identity) throw new Error(`Ticker ${ticker} was not found in the SEC company list`);
-  const cik = String(identity.cik_str).padStart(10, "0");
+  const identity = await resolveSecurity(ticker);
+  const cik = identity.cik;
   const [factsResponse, submissionsResponse] = await Promise.all([
     fetch(`https://data.sec.gov/api/xbrl/companyfacts/CIK${cik}.json`, { headers }),
     fetch(`https://data.sec.gov/submissions/CIK${cik}.json`, { headers }),
@@ -494,7 +491,7 @@ async function secData(ticker: string) {
   return {
     profile: {
       cik,
-      name: submissions.name ?? identity.title,
+      name: submissions.name ?? identity.name,
       sector: FALLBACK[ticker]?.profile.sector ?? null,
       industry: FALLBACK[ticker]?.profile.industry ?? submissions.sicDescription ?? null,
       exchange: submissions.exchanges?.[0] ?? null,
@@ -537,7 +534,7 @@ async function quoteData(ticker: string) {
 }
 
 export async function buildAnalysis(rawTicker: string, requested?: Partial<Assumptions>) {
-  const ticker = rawTicker.trim().toUpperCase();
+  const ticker = normalizeTicker(rawTicker);
   const fallback = FALLBACK[ticker];
   const warnings: string[] = [];
   let financials: FinancialSource;

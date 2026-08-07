@@ -1,4 +1,4 @@
-import type { Analysis, DcfAssumptions } from "./types";
+import type { Analysis, DcfAssumptions, SecuritySearchResult } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api/v1";
 
@@ -26,4 +26,16 @@ export async function runValuation(ticker: string, assumptions: DcfAssumptions):
     body: JSON.stringify({ assumptions }),
   });
   return parseResponse(response);
+}
+
+export async function searchSecurities(query: string, signal?: AbortSignal): Promise<SecuritySearchResult[]> {
+  const response = await fetch(`${API_URL}/search?q=${encodeURIComponent(query)}&limit=8`, {
+    signal,
+    cache: "no-store",
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(typeof payload.detail === "string" ? payload.detail : "Security search failed.");
+  }
+  return payload as SecuritySearchResult[];
 }

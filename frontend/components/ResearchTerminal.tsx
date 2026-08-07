@@ -25,9 +25,9 @@ import {
 } from "@carbon/icons-react";
 import type { ComponentType } from "react";
 
-import { fetchAnalysis, runValuation } from "@/lib/api";
+import { fetchAnalysis, runValuation, searchSecurities } from "@/lib/api";
 import { compactMoney, money, multiple, percent, titleCase } from "@/lib/format";
-import type { Analysis, DcfAssumptions } from "@/lib/types";
+import type { Analysis, DcfAssumptions, SecuritySearchResult } from "@/lib/types";
 import { FinancialChart } from "./FinancialChart";
 
 type PageKey = "overview" | "financials" | "valuation" | "buyTarget" | "comps" | "earnings" | "filings" | "risks" | "research";
@@ -60,6 +60,10 @@ export function ResearchTerminal() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [requestVersion, setRequestVersion] = useState(0);
+  const [searchResults, setSearchResults] = useState<SecuritySearchResult[]>([]);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [highlightedResult, setHighlightedResult] = useState(-1);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -82,10 +86,57 @@ export function ResearchTerminal() {
     };
   }, [ticker, requestVersion]);
 
+  useEffect(() => {
+    const query = tickerInput.trim();
+    if (!query) {
+      setSearchResults([]);
+      setSearchOpen(false);
+      setSearching(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setSearching(true);
+      searchSecurities(query, controller.signal)
+        .then((results) => {
+          setSearchResults(results);
+          setSearchOpen(true);
+          setHighlightedResult(results.length ? 0 : -1);
+        })
+        .catch((searchError: Error) => {
+          if (searchError.name !== "AbortError") {
+            setSearchResults([]);
+            setSearchOpen(false);
+          }
+        })
+        .finally(() => setSearching(false));
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [tickerInput]);
+
+  function selectSecurity(result: SecuritySearchResult) {
+    setTickerInput(result.ticker);
+    setTicker(result.ticker);
+    setSearchOpen(false);
+    setHighlightedResult(-1);
+  }
+
   function submitTicker(event: FormEvent) {
     event.preventDefault();
+    if (searchOpen && highlightedResult >= 0 && searchResults[highlightedResult]) {
+      selectSecurity(searchResults[highlightedResult]);
+      return;
+    }
     const normalized = tickerInput.trim().toUpperCase();
-    if (normalized) setTicker(normalized);
+    if (normalized) {
+      setTicker(normalized);
+      setSearchOpen(false);
+    }
   }
 
   return (
@@ -97,14 +148,61 @@ export function ResearchTerminal() {
           <span className="brand-mode">RESEARCH</span>
         </div>
         <form className="ticker-search" onSubmit={submitTicker}>
-          <TextInput
-            id="ticker-search"
-            labelText="Ticker or company"
-            hideLabel
-            placeholder="Ticker or company"
-            value={tickerInput}
-            onChange={(event) => setTickerInput(event.target.value)}
-          />
+          <div className="search-field">
+            <TextInput
+              id="ticker-search"
+              labelText="Ticker or company"
+              hideLabel
+              placeholder="Search ticker or company"
+              value={tickerInput}
+              role="combobox"
+              aria-autocomplete="list"
+              aria-controls="security-search-results"
+              aria-expanded={searchOpen}
+              aria-activedescendant={highlightedResult >= 0 ? `security-result-${highlightedResult}` : undefined}
+              autoComplete="off"
+              onFocus={() => setSearchOpen(searchResults.length > 0)}
+              onBlur={() => window.setTimeout(() => setSearchOpen(false), 120)}
+              onChange={(event) => setTickerInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowDown" && searchResults.length) {
+                  event.preventDefault();
+                  setSearchOpen(true);
+                  setHighlightedResult((value) => (value + 1) % searchResults.length);
+                } else if (event.key === "ArrowUp" && searchResults.length) {
+                  event.preventDefault();
+                  setSearchOpen(true);
+                  setHighlightedResult((value) => (value <= 0 ? searchResults.length - 1 : value - 1));
+                } else if (event.key === "Escape") {
+                  setSearchOpen(false);
+                }
+              }}
+            />
+            {searchOpen && (
+              <div id="security-search-results" className="search-results" role="listbox" aria-label="Matching securities">
+                {searchResults.length ? searchResults.map((result, index) => (
+                  <button
+                    id={`security-result-${index}`}
+                    key={result.listing_id}
+                    type="button"
+                    role="option"
+                    aria-selected={index === highlightedResult}
+                    className={index === highlightedResult ? "is-highlighted" : ""}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onMouseEnter={() => setHighlightedResult(index)}
+                    onClick={() => selectSecurity(result)}
+                  >
+                    <strong>{result.ticker}</strong>
+                    <span>{result.name}</span>
+                    <small>{result.exchange} / {result.mic}</small>
+                  </button>
+                )) : !searching && <p>No matching SEC-listed companies</p>}
+              </div>
+            )}
+            <span className="search-status" aria-live="polite">
+              {searching ? "Searching securities" : searchResults.length ? `${searchResults.length} matches` : ""}
+            </span>
+          </div>
           <Button type="submit" renderIcon={Search} iconDescription="Run analysis">
             Analyze
           </Button>
