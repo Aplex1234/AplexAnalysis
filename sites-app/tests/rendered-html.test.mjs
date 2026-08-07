@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { buildFinancialChartData, formatBillions } from "../../frontend/lib/chart.ts";
+
 async function render() {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
@@ -24,6 +26,27 @@ test("server-renders the AplexAnalysis terminal", async () => {
   assert.match(html, /Ticker or company/);
   assert.match(html, /Research software\. Not investment advice\./);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/);
+});
+
+test("financial chart scales operating income to readable billions", () => {
+  const [point] = buildFinancialChartData([{
+    fiscal_year: 2025,
+    period_type: "FY",
+    period_end: null,
+    filed_at: null,
+    accession_number: null,
+    form: "10-K",
+    currency: "USD",
+    values: {
+      operating_income: 14_008_000_000,
+      free_cash_flow: 11_600_000_000,
+    },
+    provenance: {},
+  }]);
+
+  assert.equal(point.operatingIncome, 14.008);
+  assert.equal(formatBillions(point.operatingIncome), "$14.0B");
+  assert.equal(formatBillions(point.freeCashFlow), "$11.6B");
 });
 
 test("searches the SEC security universe with stable listing identities", async () => {
