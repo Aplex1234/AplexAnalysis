@@ -8,6 +8,7 @@ import {
   SkeletonText,
   Tag,
   TextInput,
+  Theme,
 } from "@carbon/react";
 import {
   Calculator,
@@ -17,10 +18,12 @@ import {
   Dashboard,
   Document,
   Information,
+  Moon,
   Purchase,
   Renew,
   Report,
   Search,
+  Sun,
   WarningAlt,
 } from "@carbon/icons-react";
 import type { ComponentType } from "react";
@@ -29,6 +32,7 @@ import { fetchAnalysis, runValuation, searchSecurities } from "@/lib/api";
 import { compactMoney, money, multiple, percent, titleCase } from "@/lib/format";
 import type { Analysis, DcfAssumptions, SecuritySearchResult } from "@/lib/types";
 import { FinancialChart } from "./FinancialChart";
+import { FinancialExplorer } from "./FinancialExplorer";
 
 type PageKey = "overview" | "financials" | "valuation" | "buyTarget" | "comps" | "earnings" | "filings" | "risks" | "research";
 
@@ -64,6 +68,16 @@ export function ResearchTerminal() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searching, setSearching] = useState(false);
   const [highlightedResult, setHighlightedResult] = useState(-1);
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+
+  useEffect(() => {
+    const savedTheme = window.localStorage.getItem("aplex-theme");
+    if (savedTheme === "light" || savedTheme === "dark") {
+      setTheme(savedTheme);
+      return;
+    }
+    setTheme(window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -139,77 +153,88 @@ export function ResearchTerminal() {
     }
   }
 
+  function toggleTheme() {
+    const nextTheme = theme === "dark" ? "light" : "dark";
+    setTheme(nextTheme);
+    window.localStorage.setItem("aplex-theme", nextTheme);
+  }
+
   return (
-    <div className="terminal-shell">
+    <Theme theme={theme === "dark" ? "g100" : "white"}>
+    <div className="terminal-shell" data-theme={theme}>
       <header className="topbar">
         <div className="brand-lockup" aria-label="AplexAnalysis home">
           <span className="brand-mark">A</span>
-          <span>AplexAnalysis</span>
-          <span className="brand-mode">RESEARCH</span>
+          <span className="brand-name"><strong>Aplex</strong>Analysis</span>
         </div>
-        <form className="ticker-search" onSubmit={submitTicker}>
-          <div className="search-field">
-            <TextInput
-              id="ticker-search"
-              labelText="Ticker or company"
-              hideLabel
-              placeholder="Search ticker or company"
-              value={tickerInput}
-              role="combobox"
-              aria-autocomplete="list"
-              aria-controls="security-search-results"
-              aria-expanded={searchOpen}
-              aria-activedescendant={highlightedResult >= 0 ? `security-result-${highlightedResult}` : undefined}
-              autoComplete="off"
-              onFocus={() => setSearchOpen(searchResults.length > 0)}
-              onBlur={() => window.setTimeout(() => setSearchOpen(false), 120)}
-              onChange={(event) => setTickerInput(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "ArrowDown" && searchResults.length) {
-                  event.preventDefault();
-                  setSearchOpen(true);
-                  setHighlightedResult((value) => (value + 1) % searchResults.length);
-                } else if (event.key === "ArrowUp" && searchResults.length) {
-                  event.preventDefault();
-                  setSearchOpen(true);
-                  setHighlightedResult((value) => (value <= 0 ? searchResults.length - 1 : value - 1));
-                } else if (event.key === "Escape") {
-                  setSearchOpen(false);
-                }
-              }}
-            />
-            {searchOpen && (
-              <div id="security-search-results" className="search-results" role="listbox" aria-label="Matching securities">
-                {searchResults.length ? searchResults.map((result, index) => (
-                  <button
-                    id={`security-result-${index}`}
-                    key={result.listing_id}
-                    type="button"
-                    role="option"
-                    aria-selected={index === highlightedResult}
-                    className={index === highlightedResult ? "is-highlighted" : ""}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onMouseEnter={() => setHighlightedResult(index)}
-                    onClick={() => selectSecurity(result)}
-                  >
-                    <strong>{result.ticker}</strong>
-                    <span>{result.name}</span>
-                    <small>{result.exchange} / {result.mic}</small>
-                  </button>
-                )) : !searching && <p>No matching SEC-listed companies</p>}
-              </div>
-            )}
-            <span className="search-status" aria-live="polite">
-              {searching ? "Searching securities" : searchResults.length ? `${searchResults.length} matches` : ""}
-            </span>
-          </div>
-          <Button type="submit" renderIcon={Search} iconDescription="Run analysis">
-            Analyze
-          </Button>
-        </form>
+        <div className="search-module">
+          <label htmlFor="ticker-search">Search public companies</label>
+          <form className="ticker-search" onSubmit={submitTicker}>
+            <div className="search-field">
+              <TextInput
+                id="ticker-search"
+                labelText="Ticker or company"
+                hideLabel
+                placeholder="Ticker or company, for example Mastercard"
+                value={tickerInput}
+                role="combobox"
+                aria-autocomplete="list"
+                aria-controls="security-search-results"
+                aria-expanded={searchOpen}
+                aria-activedescendant={highlightedResult >= 0 ? `security-result-${highlightedResult}` : undefined}
+                autoComplete="off"
+                onFocus={() => setSearchOpen(searchResults.length > 0)}
+                onBlur={() => window.setTimeout(() => setSearchOpen(false), 120)}
+                onChange={(event) => setTickerInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowDown" && searchResults.length) {
+                    event.preventDefault();
+                    setSearchOpen(true);
+                    setHighlightedResult((value) => (value + 1) % searchResults.length);
+                  } else if (event.key === "ArrowUp" && searchResults.length) {
+                    event.preventDefault();
+                    setSearchOpen(true);
+                    setHighlightedResult((value) => (value <= 0 ? searchResults.length - 1 : value - 1));
+                  } else if (event.key === "Escape") {
+                    setSearchOpen(false);
+                  }
+                }}
+              />
+              {searchOpen && (
+                <div id="security-search-results" className="search-results" role="listbox" aria-label="Matching securities">
+                  {searchResults.length ? searchResults.map((result, index) => (
+                    <button
+                      id={`security-result-${index}`}
+                      key={result.listing_id}
+                      type="button"
+                      role="option"
+                      aria-selected={index === highlightedResult}
+                      className={index === highlightedResult ? "is-highlighted" : ""}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onMouseEnter={() => setHighlightedResult(index)}
+                      onClick={() => selectSecurity(result)}
+                    >
+                      <strong>{result.ticker}</strong>
+                      <span>{result.name}</span>
+                      <small>{result.exchange} / {result.mic}</small>
+                    </button>
+                  )) : !searching && <p>No matching SEC-reporting companies</p>}
+                </div>
+              )}
+              <span className="search-status" aria-live="polite">
+                {searching ? "Searching securities" : searchResults.length ? `${searchResults.length} matches` : ""}
+              </span>
+            </div>
+            <Button type="submit" renderIcon={Search} iconDescription="Run analysis">
+              Analyze
+            </Button>
+          </form>
+        </div>
         <div className="topbar-status">
-          <span>SEC primary</span>
-          <span>USD</span>
+          <div><span>Coverage</span><strong>SEC filings</strong></div>
+          <button type="button" className="theme-toggle" onClick={toggleTheme} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}>
+            {theme === "dark" ? <Sun size={19} /> : <Moon size={19} />}
+          </button>
         </div>
       </header>
 
@@ -217,7 +242,7 @@ export function ResearchTerminal() {
         <div className="watchlist">
           <span>QUICK ACCESS</span>
           <div>
-            {["AAPL", "NVDA", "COST"].map((quickTicker) => (
+            {["AAPL", "MA", "NVDA", "COST"].map((quickTicker) => (
               <button
                 key={quickTicker}
                 type="button"
@@ -272,6 +297,7 @@ export function ResearchTerminal() {
         )}
       </main>
     </div>
+    </Theme>
   );
 }
 
@@ -301,16 +327,17 @@ function ErrorState({ ticker, error, retry }: { ticker: string; error: string; r
 }
 
 function CompanyHeader({ analysis }: { analysis: Analysis }) {
+  const classification = [analysis.company.sector, analysis.company.industry].filter(Boolean).join(" / ");
   return (
     <section className="company-header">
       <div>
         <div className="company-title-row">
           <h1>{analysis.company.ticker}</h1>
           <span>{analysis.company.exchange}</span>
-          <Tag type="blue">{analysis.provenance.financials === "live-sec" ? "LIVE SEC" : "SNAPSHOT"}</Tag>
+          <Tag type="blue">{analysis.provenance.financials === "live-sec" ? "SEC VERIFIED" : "SNAPSHOT"}</Tag>
         </div>
         <h2>{analysis.company.name}</h2>
-        <p>{analysis.company.sector} / {analysis.company.industry}</p>
+        <p>{classification || "SEC reporting company"}</p>
       </div>
       <div className="quote-block">
         <span>DELAYED PRICE</span>
@@ -339,16 +366,21 @@ function OverviewView({ analysis }: { analysis: Analysis }) {
     <div className="page-stack">
       <section className="headline-grid">
         <div className="score-panel">
-          <span>APLEXANALYSIS SCORE</span>
+          <span>APLEX SCORE</span>
           <strong>{headline.score}<small>/100</small></strong>
           <Tag type={headline.score >= 70 ? "green" : headline.score >= 50 ? "gray" : "red"}>{headline.rating}</Tag>
-          <p>Transparent weighted score at the current market price.</p>
+          <p>Eight financial and valuation categories, weighted at the current market price.</p>
         </div>
-        <MetricCell label="Fair value" value={money(headline.fair_value)} detail={percent(headline.upside) + " upside"} tone={headline.upside >= 0 ? "positive" : "negative"} />
-        <MetricCell label="Buy target" value={money(headline.buy_target)} detail={`${percent(analysis.buy_target.margin_of_safety)} margin of safety`} />
-        <MetricCell label="Bear case" value={money(headline.bear_value)} detail={percent(headline.bear_value / headline.current_price - 1)} />
-        <MetricCell label="Base case" value={money(headline.base_value)} detail={percent(headline.base_value / headline.current_price - 1)} />
-        <MetricCell label="Bull case" value={money(headline.bull_value)} detail={percent(headline.bull_value / headline.current_price - 1)} />
+        <div className="headline-primary">
+          <MetricCell label="Fair value" value={money(headline.fair_value)} detail={percent(headline.upside) + " upside"} tone={headline.upside >= 0 ? "positive" : "negative"} />
+          <MetricCell label="Buy target" value={money(headline.buy_target)} detail={`${percent(analysis.buy_target.margin_of_safety)} margin of safety`} />
+        </div>
+        <div className="scenario-panel">
+          <div className="scenario-heading"><span>Valuation range</span><small>Per share</small></div>
+          <MetricCell label="Bear" value={money(headline.bear_value)} detail={percent(headline.bear_value / headline.current_price - 1)} />
+          <MetricCell label="Base" value={money(headline.base_value)} detail={percent(headline.base_value / headline.current_price - 1)} />
+          <MetricCell label="Bull" value={money(headline.bull_value)} detail={percent(headline.bull_value / headline.current_price - 1)} />
+        </div>
       </section>
 
       <section className="content-section">
@@ -410,28 +442,20 @@ function DataRow({ label, value, subvalue }: { label: string; value: string; sub
 function FinancialsView({ analysis }: { analysis: Analysis }) {
   return (
     <div className="page-stack">
-      <section className="content-section">
-        <SectionHeading title="Historical financials" detail="USD in millions except per-share data" />
-        <FinancialChart periods={analysis.financials} />
+      <section className="financials-intro">
+        <div>
+          <h2>Financial explorer</h2>
+          <p>Compare annual income, profitability, cash generation and balance sheet strength from standardized SEC facts.</p>
+        </div>
+        <div className="coverage-summary">
+          <span>History</span>
+          <strong>{analysis.financials[0]?.fiscal_year}-{analysis.financials.at(-1)?.fiscal_year}</strong>
+          <small>10-K, 20-F and 40-F support</small>
+        </div>
       </section>
-      <section className="table-section">
-        <table className="research-table">
-          <thead><tr><th>Fiscal year</th><th>Revenue</th><th>Gross profit</th><th>Operating income</th><th>Net income</th><th>Free cash flow</th><th>Diluted EPS</th></tr></thead>
-          <tbody>
-            {analysis.financials.map((period) => (
-              <tr key={period.fiscal_year}>
-                <th>{period.fiscal_year}</th>
-                <td>{compactMoney(period.values.revenue)}</td>
-                <td>{compactMoney(period.values.gross_profit)}</td>
-                <td>{compactMoney(period.values.operating_income)}</td>
-                <td>{compactMoney(period.values.net_income)}</td>
-                <td>{compactMoney(period.values.free_cash_flow)}</td>
-                <td>{money(period.values.diluted_eps)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <p className="table-note">Click through to the source filing from the Filings page. Calculated rows retain formula provenance in the API.</p>
+      <section className="financial-explorer-section">
+        <FinancialExplorer periods={analysis.financials} />
+        <p className="table-note">Missing values are shown as N/A. Calculated rows retain formula and source provenance in the API.</p>
       </section>
     </div>
   );

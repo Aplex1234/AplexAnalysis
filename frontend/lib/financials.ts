@@ -1,0 +1,131 @@
+import type { FinancialPeriod, FinancialValues } from "./types";
+
+export type FinancialGroupKey = "income" | "margins" | "cashFlow" | "balanceSheet";
+export type FinancialUnit = "money" | "percent";
+export type FinancialMetricKey =
+  | keyof FinancialValues
+  | "gross_margin"
+  | "operating_margin"
+  | "net_margin"
+  | "fcf_margin";
+
+export type FinancialSeriesDefinition = {
+  key: FinancialMetricKey;
+  label: string;
+  color: string;
+  chart: "bar" | "line";
+};
+
+export type FinancialGroupDefinition = {
+  key: FinancialGroupKey;
+  label: string;
+  shortLabel: string;
+  description: string;
+  unit: FinancialUnit;
+  series: FinancialSeriesDefinition[];
+};
+
+export const FINANCIAL_GROUPS: FinancialGroupDefinition[] = [
+  {
+    key: "income",
+    label: "Income statement",
+    shortLabel: "Income",
+    description: "Revenue and earnings from annual SEC filings",
+    unit: "money",
+    series: [
+      { key: "revenue", label: "Revenue", color: "var(--chart-1)", chart: "bar" },
+      { key: "gross_profit", label: "Gross profit", color: "var(--chart-2)", chart: "line" },
+      { key: "operating_income", label: "Operating income", color: "var(--chart-3)", chart: "line" },
+      { key: "net_income", label: "Net income", color: "var(--chart-4)", chart: "line" },
+    ],
+  },
+  {
+    key: "margins",
+    label: "Margins",
+    shortLabel: "Margins",
+    description: "Profitability as a percentage of reported revenue",
+    unit: "percent",
+    series: [
+      { key: "gross_margin", label: "Gross margin", color: "var(--chart-2)", chart: "line" },
+      { key: "operating_margin", label: "Operating margin", color: "var(--chart-3)", chart: "line" },
+      { key: "net_margin", label: "Net margin", color: "var(--chart-4)", chart: "line" },
+      { key: "fcf_margin", label: "FCF margin", color: "var(--chart-1)", chart: "line" },
+    ],
+  },
+  {
+    key: "cashFlow",
+    label: "Cash flow",
+    shortLabel: "Cash flow",
+    description: "Operating cash generation, reinvestment and owner returns",
+    unit: "money",
+    series: [
+      { key: "operating_cash_flow", label: "Operating cash flow", color: "var(--chart-1)", chart: "bar" },
+      { key: "free_cash_flow", label: "Free cash flow", color: "var(--chart-2)", chart: "line" },
+      { key: "capex", label: "Capital expenditure", color: "var(--chart-4)", chart: "line" },
+      { key: "dividends_paid", label: "Dividends paid", color: "var(--chart-3)", chart: "line" },
+    ],
+  },
+  {
+    key: "balanceSheet",
+    label: "Balance sheet",
+    shortLabel: "Balance sheet",
+    description: "Cash, assets, obligations and shareholder capital at fiscal year-end",
+    unit: "money",
+    series: [
+      { key: "total_assets", label: "Total assets", color: "var(--chart-1)", chart: "bar" },
+      { key: "cash_and_investments", label: "Cash and investments", color: "var(--chart-2)", chart: "line" },
+      { key: "total_liabilities", label: "Total liabilities", color: "var(--chart-4)", chart: "line" },
+      { key: "total_debt", label: "Total debt", color: "var(--chart-3)", chart: "line" },
+      { key: "equity", label: "Shareholders' equity", color: "var(--chart-5)", chart: "line" },
+    ],
+  },
+];
+
+const MARGIN_KEYS = new Set<FinancialMetricKey>([
+  "gross_margin",
+  "operating_margin",
+  "net_margin",
+  "fcf_margin",
+]);
+
+export function financialMetricValue(period: FinancialPeriod, key: FinancialMetricKey): number | null {
+  const values = period.values;
+  if (key === "gross_margin") return values.revenue && values.gross_profit != null ? values.gross_profit / values.revenue : null;
+  if (key === "operating_margin") return values.revenue && values.operating_income != null ? values.operating_income / values.revenue : null;
+  if (key === "net_margin") return values.revenue && values.net_income != null ? values.net_income / values.revenue : null;
+  if (key === "fcf_margin") return values.revenue && values.free_cash_flow != null ? values.free_cash_flow / values.revenue : null;
+
+  const value = values[key as keyof FinancialValues];
+  if (value == null || !Number.isFinite(value)) return null;
+  if (key === "capex" || key === "dividends_paid") return -Math.abs(value);
+  return value;
+}
+
+export function buildFinancialExplorerData(periods: FinancialPeriod[], group: FinancialGroupDefinition) {
+  return periods.map((period) => {
+    const point: Record<string, number | null> & { year: number } = { year: period.fiscal_year };
+    for (const series of group.series) {
+      const rawValue = financialMetricValue(period, series.key);
+      point[series.key] = rawValue == null
+        ? null
+        : MARGIN_KEYS.has(series.key)
+          ? rawValue * 100
+          : rawValue / 1_000_000_000;
+    }
+    return point;
+  });
+}
+
+export function availableFinancialSeries(periods: FinancialPeriod[], group: FinancialGroupDefinition) {
+  return group.series.filter((series) =>
+    periods.some((period) => financialMetricValue(period, series.key) != null),
+  );
+}
+
+export function latestFinancialValue(periods: FinancialPeriod[], key: FinancialMetricKey) {
+  for (let index = periods.length - 1; index >= 0; index -= 1) {
+    const value = financialMetricValue(periods[index], key);
+    if (value != null) return { year: periods[index].fiscal_year, value };
+  }
+  return null;
+}

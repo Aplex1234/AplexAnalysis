@@ -11,8 +11,8 @@ export async function generateMetadata(): Promise<Metadata> {
   const origin = host ? `${protocol}://${host}` : "https://aplexanalysis.chatgpt.site";
   const title = "AplexAnalysis | Equity Research Terminal";
   const description =
-    "Transparent SEC-based financial analysis, valuation, Buy Target and investment scoring.";
-  const socialImage = `${origin}/og.png`;
+    "Search SEC-reporting companies and explore revenue, earnings, margins, cash flow, balance sheets and valuation.";
+  const socialImage = `${origin}/og-v2.png`;
 
   return {
     title,

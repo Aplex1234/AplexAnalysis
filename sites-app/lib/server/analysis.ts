@@ -1,20 +1,12 @@
 import { normalizeTicker, resolveSecurity } from "./security-master";
+import {
+  normalizeCompanyFacts,
+  type FinancialValues,
+  type NormalizedPeriod,
+  type SecCompanyFacts,
+} from "./sec-normalizer";
 
-type Values = Record<string, number | undefined>;
-type SecPoint = {
-  form?: string;
-  fy?: number | string;
-  fp?: string;
-  filed?: string;
-  val?: number | string;
-  accn?: string;
-  end?: string;
-};
-type SecFact = { units?: { USD?: SecPoint[]; shares?: SecPoint[] } };
-type SecCompanyFacts = {
-  cik: number | string;
-  facts?: { "us-gaap"?: Record<string, SecFact> };
-};
+type Values = FinancialValues;
 type CompanyProfile = {
   cik: string;
   name: string;
@@ -39,17 +31,7 @@ type Quote = {
   source_url: string | null;
   is_delayed: boolean;
 };
-type Period = {
-  fiscal_year: number;
-  period_type: "FY";
-  period_end: string | null;
-  filed_at: string | null;
-  accession_number: string | null;
-  form: "10-K";
-  currency: "USD";
-  values: Values;
-  provenance: Record<string, Record<string, string>>;
-};
+type Period = NormalizedPeriod;
 
 export type Assumptions = {
   forecast_years: number;
@@ -200,94 +182,11 @@ const PEERS: Record<string, Array<Record<string, number | string>>> = {
   ],
 };
 
-const TAGS: Record<string, string[]> = {
-  revenue: ["RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues", "SalesRevenueNet"],
-  gross_profit: ["GrossProfit"],
-  operating_income: ["OperatingIncomeLoss"],
-  net_income: ["NetIncomeLoss", "ProfitLoss"],
-  operating_cash_flow: ["NetCashProvidedByUsedInOperatingActivities"],
-  capex: ["PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsForAdditionsToPropertyPlantAndEquipment"],
-  cash: ["CashAndCashEquivalentsAtCarryingValue", "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents"],
-  equity: ["StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"],
-  long_term_debt: ["LongTermDebtAndFinanceLeaseObligationsNoncurrent", "LongTermDebtNoncurrent"],
-  diluted_shares: ["WeightedAverageNumberOfDilutedSharesOutstanding"],
-  share_repurchases: ["PaymentsForRepurchaseOfCommonStock"],
-};
-
 const clamp = (value: number, low: number, high: number) => Math.max(low, Math.min(high, value));
 const divide = (a?: number, b?: number) => (a == null || !b ? null : a / b);
 const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)] ?? 0;
 const cagr = (start?: number, end?: number, years = 1) =>
   start && end && start > 0 && end > 0 ? (end / start) ** (1 / years) - 1 : null;
-
-function annualPoints(fact: SecFact | undefined, unit: "USD" | "shares") {
-  const rows = (fact?.units?.[unit] ?? []).filter(
-    (row) => row.form === "10-K" && row.fy && row.fp === "FY",
-  );
-  const byYear = new Map<number, SecPoint>();
-  for (const row of rows) {
-    const existing = byYear.get(Number(row.fy));
-    if (!existing || String(row.filed) > String(existing.filed)) byYear.set(Number(row.fy), row);
-  }
-  return [...byYear.values()];
-}
-
-function normalizeFacts(payload: SecCompanyFacts): Period[] {
-  const facts = payload?.facts?.["us-gaap"] ?? {};
-  const years = new Map<number, { values: Values; provenance: Period["provenance"]; meta: SecPoint }>();
-  for (const [metric, candidates] of Object.entries(TAGS)) {
-    const unit = metric.includes("shares") ? "shares" : "USD";
-    let selectedTag: string | undefined;
-    let points: SecPoint[] = [];
-    for (const tag of candidates) {
-      points = annualPoints(facts[tag], unit);
-      if (points.length) {
-        selectedTag = tag;
-        break;
-      }
-    }
-    if (!selectedTag) continue;
-    for (const point of points) {
-      const year = Number(point.fy);
-      const bucket = years.get(year) ?? { values: {}, provenance: {}, meta: {} };
-      bucket.values[metric] = Number(point.val);
-      bucket.provenance[metric] = {
-        provider: "SEC EDGAR Company Facts",
-        taxonomy: `us-gaap:${selectedTag}`,
-        accession_number: point.accn ?? "",
-        filed: point.filed ?? "",
-        source_url: `https://www.sec.gov/Archives/edgar/data/${Number(payload.cik)}/${String(point.accn ?? "").replaceAll("-", "")}`,
-      };
-      bucket.meta = point;
-      years.set(year, bucket);
-    }
-  }
-  return [...years.entries()]
-    .sort(([a], [b]) => a - b)
-    .slice(-6)
-    .map(([fiscalYear, bucket]) => {
-      const values = bucket.values;
-      if (values.operating_cash_flow != null && values.capex != null) {
-        values.free_cash_flow = values.operating_cash_flow - Math.abs(values.capex);
-        bucket.provenance.free_cash_flow = { formula: "operating_cash_flow - abs(capex)" };
-      }
-      if (values.net_income != null && values.diluted_shares) {
-        values.diluted_eps = values.net_income / values.diluted_shares;
-        bucket.provenance.diluted_eps = { formula: "net_income / diluted_shares" };
-      }
-      return {
-        fiscal_year: fiscalYear,
-        period_type: "FY",
-        period_end: bucket.meta.end ?? null,
-        filed_at: bucket.meta.filed ?? null,
-        accession_number: bucket.meta.accn ?? null,
-        form: "10-K",
-        currency: "USD",
-        values,
-        provenance: bucket.provenance,
-      };
-    });
-}
 
 function calculateMetrics(periods: Period[], price: number) {
   const latest = periods.at(-1)!.values;
@@ -305,8 +204,10 @@ function calculateMetrics(periods: Period[], price: number) {
   );
   const shares = latest.shares_outstanding ?? latest.diluted_shares;
   const marketCap = shares ? shares * price : undefined;
-  const netDebt = (latest.long_term_debt ?? 0) - (latest.cash ?? 0);
-  const investedCapital = (latest.equity ?? 0) + (latest.long_term_debt ?? 0) - (latest.cash ?? 0);
+  const debt = latest.total_debt ?? latest.long_term_debt ?? 0;
+  const liquidAssets = latest.cash_and_investments ?? latest.cash ?? 0;
+  const netDebt = latest.net_debt ?? debt - liquidAssets;
+  const investedCapital = (latest.equity ?? 0) + debt - liquidAssets;
   const eps = divide(latest.net_income, latest.diluted_shares);
   const priorEps = divide(prior.net_income, prior.diluted_shares);
   return {
@@ -347,7 +248,9 @@ function dcfValue(periods: Period[], growth: number, margin: number, wacc: numbe
     presentValue += projectedFcf / (1 + wacc) ** year;
   }
   const terminal = (projectedFcf * (1 + terminalGrowth)) / (wacc - terminalGrowth);
-  const netDebt = (latest.long_term_debt ?? 0) - (latest.cash ?? 0);
+  const debt = latest.total_debt ?? latest.long_term_debt ?? 0;
+  const liquidAssets = latest.cash_and_investments ?? latest.cash ?? 0;
+  const netDebt = latest.net_debt ?? debt - liquidAssets;
   const shares = latest.shares_outstanding ?? latest.diluted_shares ?? 1;
   return Math.max((presentValue + terminal / (1 + wacc) ** years - netDebt) / shares, 0);
 }
@@ -475,7 +378,7 @@ async function secData(ticker: string) {
     exchanges?: string[];
     filings?: { recent?: Record<string, string[]> };
   };
-  const periods = normalizeFacts(facts);
+  const periods = normalizeCompanyFacts(facts);
   if (periods.length < 3) throw new Error("SEC facts did not contain enough normalized annual periods");
   const recent = submissions.filings?.recent ?? {};
   const filings = (recent.form ?? [])
@@ -486,7 +389,7 @@ async function secData(ticker: string) {
       accession_number: recent.accessionNumber?.[index] ?? "",
       source_url: `https://www.sec.gov/Archives/edgar/data/${Number(cik)}/${String(recent.accessionNumber?.[index] ?? "").replaceAll("-", "")}/${recent.primaryDocument?.[index] ?? ""}`,
     }))
-    .filter((item: Filing) => ["10-K", "10-Q", "8-K"].includes(item.form))
+    .filter((item: Filing) => ["10-K", "10-Q", "8-K", "20-F", "40-F", "6-K"].includes(item.form))
     .slice(0, 20);
   return {
     profile: {
@@ -503,7 +406,8 @@ async function secData(ticker: string) {
 }
 
 async function quoteData(ticker: string) {
-  const response = await fetch(`https://api.nasdaq.com/api/quote/${ticker}/info?assetclass=stocks`, {
+  const quoteTicker = ticker.replaceAll("-", ".");
+  const response = await fetch(`https://api.nasdaq.com/api/quote/${quoteTicker}/info?assetclass=stocks`, {
     headers: {
       "User-Agent": "Mozilla/5.0 (compatible; AplexAnalysis/0.1; financial research)",
       Accept: "application/json, text/plain, */*",

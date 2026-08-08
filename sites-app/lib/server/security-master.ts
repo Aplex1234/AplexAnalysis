@@ -29,6 +29,7 @@ const FALLBACK_ROWS: Array<[number, string, string, string]> = [
   [320193, "Apple Inc.", "AAPL", "Nasdaq"],
   [1045810, "NVIDIA Corporation", "NVDA", "Nasdaq"],
   [909832, "Costco Wholesale Corporation", "COST", "Nasdaq"],
+  [1141391, "Mastercard Incorporated", "MA", "NYSE"],
 ];
 
 let cachedMaster: { expiresAt: number; entries: SecuritySearchResult[] } | null = null;
