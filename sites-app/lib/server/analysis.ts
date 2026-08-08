@@ -1,4 +1,6 @@
 import { normalizeTicker, resolveSecurity } from "./security-master";
+import { extractRiskFactorHeadings } from "./risk-factors";
+import { calculatePegProjection } from "./peg";
 import {
   normalizeCompanyFacts,
   type FinancialValues,
@@ -22,7 +24,20 @@ type Filing = {
   accession_number: string;
   source_url: string;
 };
-type FinancialSource = { profile: CompanyProfile; periods: Period[]; filings: Filing[] };
+type CompanyRisk = {
+  severity: "filed" | "high" | "medium" | "low";
+  title: string;
+  detail: string;
+  source_url?: string;
+  filing_date?: string | null;
+  form?: string;
+};
+type FinancialSource = {
+  profile: CompanyProfile;
+  periods: Period[];
+  filings: Filing[];
+  filingRisks: CompanyRisk[];
+};
 type Quote = {
   price: number;
   as_of: string;
@@ -49,6 +64,8 @@ const DEFAULT_ASSUMPTIONS: Assumptions = {
   wacc: 0.09,
   terminal_growth: 0.025,
 };
+const RISK_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const riskCache = new Map<string, { expiresAt: number; risks: CompanyRisk[] }>();
 
 function period(
   fiscalYear: number,
@@ -294,6 +311,7 @@ function calculateValuation(
   const normalized = eps * clamp(targetPe * 0.92, 12, 38);
   const fairValue = pureDcf * 0.55 + comparable * 0.2 + growthValue * 0.15 + normalized * 0.1;
   const impliedGrowth = reverseDcf(periods, price, margin, assumptions);
+  const growthProjection = calculatePegProjection(periods, metrics.pe, growth);
   return {
     current_price: price,
     bear_value: bear,
@@ -306,6 +324,7 @@ function calculateValuation(
       implied_revenue_growth: impliedGrowth,
       interpretation: `The market price implies approximately ${(impliedGrowth * 100).toFixed(1)}% annual revenue growth over the explicit forecast period.`,
     },
+    growth_projection: growthProjection,
     methodology: "55% DCF, 20% peer P/E, 15% growth-adjusted P/E, 10% normalized P/E",
   };
 }
@@ -321,7 +340,7 @@ function calculateScore(
   const debtScore = debtRatio != null && debtRatio < 0 ? 90 : scaled(debtRatio, 4, 0);
   const positiveRatio = metrics.earnings_positive_years / Math.max(metrics.history_years, 1);
   const categories = {
-    valuation: Math.round(0.65 * scaled(valuation.upside_to_fair_value, -0.35, 0.5) + 0.35 * scaled(metrics.fcf_yield, 0.015, 0.08)),
+    valuation: valuation.growth_projection.score,
     quality: Math.round(0.45 * scaled(metrics.roic, 0.05, 0.3) + 0.3 * scaled(metrics.operating_margin, 0.05, 0.35) + 0.25 * scaled(metrics.fcf_conversion, 0.55, 1.1)),
     growth: Math.round(0.45 * scaled(metrics.revenue_cagr, 0, 0.2) + 0.3 * scaled(metrics.net_income_cagr, -0.03, 0.25) + 0.25 * scaled(metrics.fcf_cagr, -0.03, 0.25)),
     financial_strength: Math.round(0.65 * debtScore + 0.35 * scaled(metrics.fcf_conversion, 0.5, 1.1)),
@@ -333,7 +352,36 @@ function calculateScore(
   const weights: Record<string, number> = { valuation: 0.3, quality: 0.2, growth: 0.15, financial_strength: 0.1, capital_allocation: 0.1, earnings_quality: 0.05, momentum: 0.05, risk: 0.05 };
   const overall = Math.round(Object.entries(categories).reduce((sum, [key, value]) => sum + value * weights[key], 0));
   const rating = overall >= 85 ? "Highly Attractive" : overall >= 70 ? "Attractive" : overall >= 50 ? "Neutral" : "Unattractive";
-  return { overall, rating, categories, weights, formula: "Weighted arithmetic mean of eight metric-derived category scores" };
+  return { overall, rating, categories, weights, formula: "Weighted arithmetic mean of eight category scores; valuation is the five-year forward PEG score" };
+}
+
+async function fetchFilingRisks(filing: Filing): Promise<CompanyRisk[]> {
+  const cached = riskCache.get(filing.source_url);
+  if (cached && cached.expiresAt > Date.now()) return cached.risks;
+
+  try {
+    const response = await fetch(filing.source_url, {
+      headers: {
+        "User-Agent": process.env.SEC_USER_AGENT ?? "AplexAnalysis/0.1 research@aplexanalysis.app",
+        Accept: "text/html,application/xhtml+xml",
+      },
+    });
+    if (!response.ok) return [];
+    const titles = extractRiskFactorHeadings(await response.text(), filing.form, 8);
+    const item = filing.form === "20-F" ? "Item 3.D" : filing.form === "10-K" ? "Item 1A" : "Risk Factors section";
+    const risks: CompanyRisk[] = titles.map((title) => ({
+      severity: "filed",
+      title,
+      detail: `Company-reported risk from ${item} of the ${filing.form} filed ${filing.filing_date ?? "most recently"}.`,
+      source_url: filing.source_url,
+      filing_date: filing.filing_date,
+      form: filing.form,
+    }));
+    riskCache.set(filing.source_url, { expiresAt: Date.now() + RISK_CACHE_TTL_MS, risks });
+    return risks;
+  } catch {
+    return [];
+  }
 }
 
 function calculateBuyTarget(
@@ -381,7 +429,7 @@ async function secData(ticker: string) {
   const periods = normalizeCompanyFacts(facts);
   if (periods.length < 3) throw new Error("SEC facts did not contain enough normalized annual periods");
   const recent = submissions.filings?.recent ?? {};
-  const filings = (recent.form ?? [])
+  const relevantFilings = (recent.form ?? [])
     .map((form: string, index: number) => ({
       form,
       filing_date: recent.filingDate?.[index] ?? null,
@@ -389,8 +437,10 @@ async function secData(ticker: string) {
       accession_number: recent.accessionNumber?.[index] ?? "",
       source_url: `https://www.sec.gov/Archives/edgar/data/${Number(cik)}/${String(recent.accessionNumber?.[index] ?? "").replaceAll("-", "")}/${recent.primaryDocument?.[index] ?? ""}`,
     }))
-    .filter((item: Filing) => ["10-K", "10-Q", "8-K", "20-F", "40-F", "6-K"].includes(item.form))
-    .slice(0, 20);
+    .filter((item: Filing) => ["10-K", "10-Q", "8-K", "20-F", "40-F", "6-K"].includes(item.form));
+  const filings = relevantFilings.slice(0, 20);
+  const latestAnnualFiling = relevantFilings.find((filing: Filing) => ["10-K", "20-F", "40-F"].includes(filing.form));
+  const filingRisks = latestAnnualFiling ? await fetchFilingRisks(latestAnnualFiling) : [];
   return {
     profile: {
       cik,
@@ -402,6 +452,7 @@ async function secData(ticker: string) {
     },
     periods,
     filings,
+    filingRisks,
   };
 }
 
@@ -449,7 +500,7 @@ export async function buildAnalysis(rawTicker: string, requested?: Partial<Assum
     if (!fallback) throw error;
     sourceMode = "fallback-snapshot";
     warnings.push(`Live SEC retrieval unavailable. Using bundled SEC-derived snapshot: ${error instanceof Error ? error.message : "Unknown error"}`);
-    financials = { profile: fallback.profile, periods: fallback.periods, filings: [] };
+    financials = { profile: fallback.profile, periods: fallback.periods, filings: [], filingRisks: [] };
   }
   let quote: Quote;
   try {
@@ -473,11 +524,11 @@ export async function buildAnalysis(rawTicker: string, requested?: Partial<Assum
   const score = calculateScore(metrics, valuation);
   const buyTarget = calculateBuyTarget(metrics, valuation, score);
   const latest = financials.periods.at(-1)!.values;
-  const risks: Array<Record<string, string>> = [];
-  if (valuation.reverse_dcf.implied_revenue_growth > 0.15) risks.push({ severity: "high", title: "Demanding expectations", detail: "The current price embeds revenue growth above 15% in the reverse DCF." });
-  if ((metrics.net_debt_to_fcf ?? 0) > 2) risks.push({ severity: "medium", title: "Leverage", detail: "Net debt exceeds two years of current free cash flow." });
-  if ((metrics.operating_margin_volatility ?? 0) > 0.04) risks.push({ severity: "medium", title: "Margin variability", detail: "Operating margins have varied materially across the available history." });
-  if (!risks.length) risks.push({ severity: "low", title: "Model uncertainty", detail: "The largest quantified risk is sensitivity to discount rate and terminal assumptions." });
+  const risks: CompanyRisk[] = [...financials.filingRisks];
+  if (!risks.length && valuation.reverse_dcf.implied_revenue_growth > 0.15) risks.push({ severity: "high", title: "Demanding expectations", detail: "The current price embeds revenue growth above 15% in the reverse DCF." });
+  if (!risks.length && (metrics.net_debt_to_fcf ?? 0) > 2) risks.push({ severity: "medium", title: "Leverage", detail: "Net debt exceeds two years of current free cash flow." });
+  if (!risks.length && (metrics.operating_margin_volatility ?? 0) > 0.04) risks.push({ severity: "medium", title: "Margin variability", detail: "Operating margins have varied materially across the available history." });
+  if (!risks.length) risks.push({ severity: "low", title: "Model uncertainty", detail: "The latest annual filing risk section was unavailable, so this fallback reflects valuation sensitivity." });
   return {
     company: { ticker, ...financials.profile },
     quote,
@@ -504,6 +555,7 @@ export async function buildAnalysis(rawTicker: string, requested?: Partial<Assum
     provenance: {
       financials: sourceMode,
       quote: quote.provider,
+      risk_factors: financials.filingRisks.length ? "latest annual filing" : "quantitative fallback",
       peer_snapshot_as_of: "2025-02-28",
       methodology_version: "0.1.0-sites",
       generated_at: new Date().toISOString(),

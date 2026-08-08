@@ -465,6 +465,7 @@ function ValuationView({ analysis, onAnalysisChange }: { analysis: Analysis; onA
   const [assumptions, setAssumptions] = useState<DcfAssumptions>(analysis.valuation.assumptions);
   const [running, setRunning] = useState(false);
   const [modelError, setModelError] = useState<string | null>(null);
+  const peg = analysis.valuation.growth_projection;
 
   async function calculate(event: FormEvent) {
     event.preventDefault();
@@ -486,6 +487,29 @@ function ValuationView({ analysis, onAnalysisChange }: { analysis: Analysis; onA
         <div className="base"><span>BLENDED FAIR VALUE</span><strong>{money(analysis.headline.fair_value)}</strong></div>
         <div><span>BULL</span><strong>{money(analysis.headline.bull_value)}</strong></div>
         <div><span>MARKET</span><strong>{money(analysis.headline.current_price)}</strong></div>
+      </section>
+      <section className="peg-model">
+        <SectionHeading
+          title="Five-year PEG valuation score"
+          detail="Uses the model's projected revenue growth. Growth is entered as percentage points in the PEG formula."
+        />
+        <div className="peg-score-grid">
+          <div><span>AVG. PROJECTED GROWTH</span><strong>{percent(peg.average_annual_growth)}</strong><small>next five fiscal years</small></div>
+          <div><span>CURRENT P / E</span><strong>{peg.current_pe == null ? "N/A" : multiple(peg.current_pe)}</strong><small>price divided by annual EPS</small></div>
+          <div className="peg-result"><span>PEG RATIO</span><strong>{peg.peg_ratio == null ? "N/A" : peg.peg_ratio.toFixed(2)}</strong><small>full score at {peg.target_peg.toFixed(1)} or lower</small></div>
+          <div><span>VALUATION SCORE</span><strong>{peg.score}<small>/100</small></strong><small>30% of the overall score</small></div>
+        </div>
+        <div className="peg-formula">
+          <span>FORMULA</span>
+          <strong>{peg.current_pe == null ? "P/E unavailable" : peg.current_pe.toFixed(1)} / {(peg.average_annual_growth * 100).toFixed(1)}% growth = {peg.peg_ratio == null ? "N/A" : peg.peg_ratio.toFixed(2)} PEG</strong>
+          <p>{peg.interpretation}</p>
+        </div>
+        <div className="peg-projection-table">
+          <table className="research-table">
+            <thead><tr><th>Fiscal year</th><th>Projected revenue</th><th>Projected net income</th><th>Annual growth</th></tr></thead>
+            <tbody>{peg.projections.map((projection) => <tr key={projection.fiscal_year}><th>{projection.fiscal_year}</th><td>{compactMoney(projection.revenue)}</td><td>{compactMoney(projection.net_income)}</td><td>{percent(projection.growth_rate)}</td></tr>)}</tbody>
+          </table>
+        </div>
       </section>
       <section className="split-section valuation-workbench">
         <form onSubmit={calculate}>
@@ -567,7 +591,28 @@ function FilingsView({ analysis }: { analysis: Analysis }) {
 }
 
 function RisksView({ analysis }: { analysis: Analysis }) {
-  return <div className="page-stack"><section className="risk-list"><SectionHeading title="Quantified risk flags" detail="Generated from financial metrics and valuation expectations" />{analysis.risks.map((risk) => <article key={risk.title}><Tag type={risk.severity === "high" ? "red" : risk.severity === "medium" ? "warm-gray" : "gray"}>{risk.severity.toUpperCase()}</Tag><div><h3>{risk.title}</h3><p>{risk.detail}</p></div></article>)}</section><InlineNotification kind="warning" lowContrast title="Coverage limitation" subtitle="Qualitative factors such as competition, concentration and management guidance require filing text analysis, which is scheduled for the next milestone." hideCloseButton /></div>;
+  const hasFiledRisks = analysis.risks.some((risk) => risk.severity === "filed");
+  return (
+    <div className="page-stack">
+      <section className="risk-list">
+        <SectionHeading
+          title={hasFiledRisks ? "Company-reported risk factors" : "Quantified risk flags"}
+          detail={hasFiledRisks ? "Extracted from the risk section of the company's latest annual filing" : "Annual-filing risk text was unavailable, so these flags use financial metrics and valuation expectations"}
+        />
+        {analysis.risks.map((risk) => (
+          <article key={risk.title}>
+            <Tag type={risk.severity === "high" ? "red" : risk.severity === "medium" ? "warm-gray" : risk.severity === "filed" ? "blue" : "gray"}>{risk.severity.toUpperCase()}</Tag>
+            <div>
+              <h3>{risk.title}</h3>
+              <p>{risk.detail}</p>
+              {risk.source_url && <a className="risk-source-link" href={risk.source_url} target="_blank" rel="noreferrer">Open source filing</a>}
+            </div>
+          </article>
+        ))}
+      </section>
+      {!hasFiledRisks && <InlineNotification kind="warning" lowContrast title="Filing text unavailable" subtitle="The site could not extract the latest annual-filing risk section for this company, so it is showing a quantitative fallback." hideCloseButton />}
+    </div>
+  );
 }
 
 function ResearchView({ analysis }: { analysis: Analysis }) {

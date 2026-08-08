@@ -89,6 +89,22 @@ export type Analysis = {
     methods: Record<string, number>;
     assumptions: DcfAssumptions;
     reverse_dcf: { implied_revenue_growth: number; interpretation: string };
+    growth_projection: {
+      basis: "revenue";
+      forecast_years: 5;
+      projections: Array<{
+        fiscal_year: number;
+        revenue: number;
+        net_income: number | null;
+        growth_rate: number;
+      }>;
+      average_annual_growth: number;
+      current_pe: number | null;
+      peg_ratio: number | null;
+      target_peg: 1.2;
+      score: number;
+      interpretation: string;
+    };
     methodology: string;
   } & Record<string, unknown>;
   buy_target: {
@@ -114,10 +130,18 @@ export type Analysis = {
     accession_number: string;
     source_url: string;
   }>;
-  risks: Array<{ severity: string; title: string; detail: string }>;
+  risks: Array<{
+    severity: string;
+    title: string;
+    detail: string;
+    source_url?: string;
+    filing_date?: string | null;
+    form?: string;
+  }>;
   provenance: {
     financials: string;
     quote: string;
+    risk_factors: string;
     peer_snapshot_as_of: string;
     methodology_version: string;
     generated_at: string;

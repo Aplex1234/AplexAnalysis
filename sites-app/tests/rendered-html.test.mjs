@@ -4,6 +4,8 @@ import test from "node:test";
 import { buildFinancialChartData, formatBillions } from "../../frontend/lib/chart.ts";
 import { buildFinancialExplorerData, FINANCIAL_GROUPS } from "../../frontend/lib/financials.ts";
 import { normalizeCompanyFacts } from "../lib/server/sec-normalizer.ts";
+import { calculatePegProjection } from "../lib/server/peg.ts";
+import { extractRiskFactorHeadings } from "../lib/server/risk-factors.ts";
 
 async function render() {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -49,6 +51,40 @@ test("financial chart scales operating income to readable billions", () => {
   assert.equal(point.operatingIncome, 14.008);
   assert.equal(formatBillions(point.operatingIncome), "$14.0B");
   assert.equal(formatBillions(point.freeCashFlow), "$11.6B");
+});
+
+test("calculates the five-year PEG score using growth percentage points", () => {
+  const periods = [{ fiscal_year: 2025, values: { revenue: 100_000_000_000, net_income: 20_000_000_000 } }];
+  const attractive = calculatePegProjection(periods, 20, 0.2);
+  assert.equal(attractive.projections.length, 5);
+  assert.equal(attractive.average_annual_growth, 0.2);
+  assert.equal(attractive.peg_ratio, 1);
+  assert.equal(attractive.score, 100);
+  assert.equal(attractive.projections.at(-1).fiscal_year, 2030);
+
+  const target = calculatePegProjection(periods, 24, 0.2);
+  assert.ok(Math.abs(target.peg_ratio - 1.2) < 1e-9);
+  assert.equal(target.score, 100);
+
+  const expensive = calculatePegProjection(periods, 36, 0.2);
+  assert.ok(Math.abs(expensive.peg_ratio - 1.8) < 1e-9);
+  assert.equal(expensive.score, 67);
+});
+
+test("extracts company-reported risks from an annual filing section", () => {
+  const html = `
+    <h2>Item 1A. Risk Factors</h2>
+    <p>Cybersecurity incidents and failures of our systems could disrupt our operations and harm our business.</p>
+    <p>Changes in laws and regulation may increase our compliance costs or limit the services that we offer.</p>
+    <p>Intense competition could reduce our market share, revenue growth and operating results.</p>
+    <p>We depend on third-party networks, and outages or service failures may adversely affect customers.</p>
+    <h2>Item 1B. Unresolved Staff Comments</h2>
+    <p>None.</p>
+  `;
+  const risks = extractRiskFactorHeadings(html, "10-K", 8);
+  assert.equal(risks.length, 4);
+  assert.match(risks[0], /Cybersecurity incidents/i);
+  assert.ok(risks.every((risk) => !risk.includes("Unresolved Staff Comments")));
 });
 
 test("normalizes Mastercard tag transitions and comparative annual facts", () => {

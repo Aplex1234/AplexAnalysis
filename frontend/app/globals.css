@@ -163,6 +163,18 @@ button, input { font: inherit; }
 .valuation-summary > div { min-height: 116px; display: flex; flex-direction: column; justify-content: center; padding: 20px 32px; border-right: 1px solid #c6c6c6; }
 .valuation-summary .base { background: #edf5ff; box-shadow: inset 0 4px 0 var(--aplex-blue); }
 .valuation-summary strong { margin-top: 8px; font: 25px "IBM Plex Mono", monospace; font-weight: 500; }
+.peg-model { padding: 28px 32px 32px; border-bottom: 1px solid #8d8d8d; }
+.peg-score-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 18px; border-top: 1px solid #8d8d8d; border-left: 1px solid #c6c6c6; }
+.peg-score-grid > div { min-height: 128px; display: flex; flex-direction: column; justify-content: center; padding: 18px; border-right: 1px solid #c6c6c6; border-bottom: 1px solid #c6c6c6; }
+.peg-score-grid span, .peg-formula > span { color: #6f6f6f; font: 10px "IBM Plex Mono", monospace; letter-spacing: .08em; }
+.peg-score-grid strong { margin: 8px 0 5px; font: 28px "IBM Plex Mono", monospace; font-weight: 500; }
+.peg-score-grid strong small { color: #6f6f6f; font-size: 13px; }
+.peg-score-grid > div > small { color: #6f6f6f; font-size: 10px; }
+.peg-score-grid .peg-result { background: #edf5ff; box-shadow: inset 0 3px 0 var(--aplex-blue); }
+.peg-formula { margin: 20px 0; padding: 18px; border-left: 3px solid var(--aplex-blue); background: #f4f4f4; }
+.peg-formula strong { display: block; margin: 7px 0; font: 16px "IBM Plex Mono", monospace; font-weight: 500; }
+.peg-formula p { max-width: 900px; margin: 0; color: #525252; font-size: 12px; line-height: 1.5; }
+.peg-projection-table { overflow-x: auto; border-top: 1px solid #c6c6c6; border-left: 1px solid #e0e0e0; }
 .assumption-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 22px; }
 .assumption-grid .cds--number { width: 100%; }
 .valuation-workbench .cds--inline-notification { margin: 0 0 16px; }
@@ -183,6 +195,8 @@ button, input { font: inherit; }
 .risk-list article { display: grid; grid-template-columns: 110px 1fr; gap: 16px; align-items: start; padding: 18px 0; border-top: 1px solid #c6c6c6; }
 .risk-list article h3 { margin: 0 0 5px; font-size: 14px; }
 .risk-list article p { margin: 0; color: #525252; font-size: 12px; }
+.risk-source-link { display: inline-block; margin-top: 9px; color: #0f62fe; font-size: 11px; font-weight: 600; text-decoration: none; }
+.risk-source-link:hover { text-decoration: underline; }
 .risk-list + .cds--inline-notification { max-width: none; margin: 24px 32px; }
 
 .research-empty, .empty-state { display: flex; flex-direction: column; align-items: flex-start; padding: 42px 32px; }
@@ -711,6 +725,17 @@ button, input { font: inherit; }
 .buy-target-hero > div:not(.formula-sign),
 .buy-target-hero .formula-sign { border-color: var(--aplex-line); }
 .valuation-summary .base { background: var(--aplex-hover); }
+.peg-model { border-color: var(--aplex-line); }
+.peg-score-grid,
+.peg-score-grid > div,
+.peg-projection-table { border-color: var(--aplex-line); }
+.peg-score-grid span,
+.peg-score-grid > div > small,
+.peg-score-grid strong small,
+.peg-formula > span { color: var(--aplex-muted); }
+.peg-score-grid .peg-result { background: var(--aplex-hover); }
+.peg-formula { border-radius: 0 12px 12px 0; background: var(--aplex-elevated); }
+.peg-formula p { color: var(--aplex-muted); }
 .reverse-dcf { border-radius: 0 12px 12px 0; background: var(--aplex-elevated); }
 .reverse-dcf p,
 .body-copy { color: var(--aplex-muted); }
@@ -801,6 +826,12 @@ button, input { font: inherit; }
   .latest-series-grid > div:first-child,
   .latest-series-grid > div:nth-child(2) { border-top: 0; }
   .valuation-summary { grid-template-columns: 1fr; }
+  .peg-score-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 640px) {
+  .peg-model { padding: 22px 16px; }
+  .peg-score-grid { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-transparency: reduce) {
