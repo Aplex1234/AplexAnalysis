@@ -1,4 +1,4 @@
-import type { Analysis, DcfAssumptions, SecuritySearchResult } from "./types";
+import type { Analysis, DcfAssumptions, SecuritySearchResult, StockPriceHistory } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api/v1";
 
@@ -38,4 +38,16 @@ export async function searchSecurities(query: string, signal?: AbortSignal): Pro
     throw new Error(typeof payload.detail === "string" ? payload.detail : "Security search failed.");
   }
   return payload as SecuritySearchResult[];
+}
+
+export async function fetchStockPriceHistory(ticker: string, signal?: AbortSignal): Promise<StockPriceHistory> {
+  const response = await fetch(`${API_URL}/companies/${encodeURIComponent(ticker)}/price-history`, {
+    signal,
+    cache: "no-store",
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(typeof payload.detail === "string" ? payload.detail : "Price history failed.");
+  }
+  return payload.data as StockPriceHistory;
 }

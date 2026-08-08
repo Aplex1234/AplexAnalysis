@@ -33,6 +33,7 @@ import { compactMoney, money, multiple, percent, titleCase } from "@/lib/format"
 import type { Analysis, DcfAssumptions, SecuritySearchResult } from "@/lib/types";
 import { FinancialChart } from "./FinancialChart";
 import { FinancialExplorer } from "./FinancialExplorer";
+import { StockPriceChart } from "./StockPriceChart";
 
 type PageKey = "overview" | "financials" | "valuation" | "buyTarget" | "comps" | "earnings" | "filings" | "risks" | "research";
 
@@ -382,6 +383,23 @@ function OverviewView({ analysis }: { analysis: Analysis }) {
           <MetricCell label="Bull" value={money(headline.bull_value)} detail={percent(headline.bull_value / headline.current_price - 1)} />
         </div>
       </section>
+
+      <section className="market-metrics-section">
+        <div className="market-metrics-heading">
+          <span>MARKET METRICS</span>
+          <h3>Valuation and growth at a glance</h3>
+          <p>Current price combined with the latest normalized annual filing.</p>
+        </div>
+        <div className="market-metrics-grid">
+          <MetricCell label="P / E" value={multiple(analysis.metrics.pe)} detail="current price / annual EPS" />
+          <MetricCell label="PEG" value={analysis.valuation.growth_projection.peg_ratio == null ? "N/A" : analysis.valuation.growth_projection.peg_ratio.toFixed(2)} detail={`${percent(analysis.valuation.growth_projection.average_annual_growth)} projected growth`} />
+          <MetricCell label="Revenue growth" value={percent(analysis.metrics.revenue_growth_yoy)} detail={`${percent(analysis.metrics.revenue_cagr)} historical CAGR`} tone={(analysis.metrics.revenue_growth_yoy ?? 0) >= 0 ? "positive" : "negative"} />
+          <MetricCell label="Income growth" value={percent(analysis.metrics.net_income_growth_yoy)} detail={`${percent(analysis.metrics.net_income_cagr)} historical CAGR`} tone={(analysis.metrics.net_income_growth_yoy ?? 0) >= 0 ? "positive" : "negative"} />
+          <MetricCell label="Price / book" value={multiple(analysis.metrics.price_to_book)} detail="market cap / shareholders' equity" />
+        </div>
+      </section>
+
+      <StockPriceChart ticker={analysis.company.ticker} />
 
       <section className="content-section">
         <SectionHeading title="Financial trajectory" detail="Annual SEC Company Facts, normalized to fiscal years" />

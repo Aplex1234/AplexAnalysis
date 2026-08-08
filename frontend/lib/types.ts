@@ -53,6 +53,25 @@ export type FinancialPeriod = {
   provenance: Record<string, Record<string, string>>;
 };
 
+export type StockPricePoint = {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+};
+
+export type StockPriceHistory = {
+  ticker: string;
+  range: "1y";
+  points: StockPricePoint[];
+  provider: string;
+  as_of: string;
+  source_url: string;
+  is_delayed: boolean;
+};
+
 export type Analysis = {
   company: {
     ticker: string;

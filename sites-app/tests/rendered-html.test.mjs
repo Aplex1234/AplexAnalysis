@@ -87,6 +87,40 @@ test("extracts company-reported risks from an annual filing section", () => {
   assert.ok(risks.every((risk) => !risk.includes("Unresolved Staff Comments")));
 });
 
+test("serves normalized delayed Nasdaq price history for the stock chart", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    data: {
+      tradesTable: {
+        rows: [
+          { date: "08/08/2026", close: "$105.25", open: "$104.00", high: "$106.10", low: "$103.90", volume: "1,200,000" },
+          { date: "08/07/2026", close: "$103.75", open: "$102.50", high: "$104.20", low: "$101.80", volume: "950,000" },
+        ],
+      },
+    },
+  }), { headers: { "content-type": "application/json" } });
+
+  try {
+    const workerUrl = new URL("../dist/server/index.js", import.meta.url);
+    workerUrl.searchParams.set("price-history-test", `${process.pid}-${Date.now()}`);
+    const { default: worker } = await import(workerUrl.href);
+    const response = await worker.fetch(
+      new Request("http://localhost/api/v1/companies/TEST/price-history"),
+      { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
+      { waitUntil() {}, passThroughOnException() {} },
+    );
+    assert.equal(response.status, 200);
+    const payload = await response.json();
+    const history = payload.data;
+    assert.equal(history.provider, "Nasdaq delayed historical prices");
+    assert.deepEqual(history.points.map((point) => point.date), ["2026-08-07", "2026-08-08"]);
+    assert.equal(history.points.at(-1).close, 105.25);
+    assert.equal(history.points.at(-1).volume, 1_200_000);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("normalizes Mastercard tag transitions and comparative annual facts", () => {
   const annual = (fy, start, end, val, filed = "2026-02-11") => ({
     form: "10-K",
@@ -218,6 +252,11 @@ test("serves a complete AAPL analysis through the hosted API", async () => {
   assert.equal(payload.data.company.ticker, "AAPL");
   assert.ok(payload.data.financials.length >= 5);
   assert.ok(Number.isFinite(payload.data.headline.fair_value));
+  assert.ok(Number.isFinite(payload.data.metrics.pe));
+  assert.ok(Number.isFinite(payload.data.metrics.price_to_book));
+  assert.ok(Number.isFinite(payload.data.metrics.revenue_growth_yoy));
+  assert.ok(Number.isFinite(payload.data.metrics.net_income_growth_yoy));
+  assert.ok(Number.isFinite(payload.data.valuation.growth_projection.peg_ratio));
   assert.ok(payload.data.headline.buy_target < payload.data.headline.fair_value);
   assert.equal(payload.data.score.overall >= 0 && payload.data.score.overall <= 100, true);
 });

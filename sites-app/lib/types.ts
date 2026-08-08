@@ -4,4 +4,6 @@ export type {
   FinancialPeriod,
   FinancialValues,
   SecuritySearchResult,
+  StockPriceHistory,
+  StockPricePoint,
 } from "../../frontend/lib/types";

@@ -201,6 +201,8 @@ const PEERS: Record<string, Array<Record<string, number | string>>> = {
 
 const clamp = (value: number, low: number, high: number) => Math.max(low, Math.min(high, value));
 const divide = (a?: number, b?: number) => (a == null || !b ? null : a / b);
+const yoyGrowth = (current?: number, previous?: number) =>
+  current != null && previous != null && previous > 0 ? current / previous - 1 : null;
 const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)] ?? 0;
 const cagr = (start?: number, end?: number, years = 1) =>
   start && end && start > 0 && end > 0 ? (end / start) ** (1 / years) - 1 : null;
@@ -228,9 +230,10 @@ function calculateMetrics(periods: Period[], price: number) {
   const eps = divide(latest.net_income, latest.diluted_shares);
   const priorEps = divide(prior.net_income, prior.diluted_shares);
   return {
-    revenue_growth_yoy: (divide(latest.revenue, prior.revenue) ?? 1) - 1,
-    eps_growth_yoy: (divide(eps ?? undefined, priorEps ?? undefined) ?? 1) - 1,
-    fcf_growth_yoy: (divide(latest.free_cash_flow, prior.free_cash_flow) ?? 1) - 1,
+    revenue_growth_yoy: yoyGrowth(latest.revenue, prior.revenue),
+    net_income_growth_yoy: yoyGrowth(latest.net_income, prior.net_income),
+    eps_growth_yoy: yoyGrowth(eps ?? undefined, priorEps ?? undefined),
+    fcf_growth_yoy: yoyGrowth(latest.free_cash_flow, prior.free_cash_flow),
     revenue_cagr: cagr(revenue[0], revenue.at(-1), Math.max(revenue.length - 1, 1)),
     net_income_cagr: cagr(income[0], income.at(-1), Math.max(income.length - 1, 1)),
     fcf_cagr: cagr(fcf[0], fcf.at(-1), Math.max(fcf.length - 1, 1)),
@@ -246,6 +249,7 @@ function calculateMetrics(periods: Period[], price: number) {
     buyback_yield: divide(latest.share_repurchases, marketCap),
     market_cap: marketCap ?? null,
     pe: divide(price, eps ?? undefined),
+    price_to_book: latest.equity != null && latest.equity > 0 ? divide(marketCap, latest.equity) : null,
     price_to_fcf: divide(marketCap, latest.free_cash_flow),
     fcf_yield: divide(latest.free_cash_flow, marketCap),
     operating_margin_volatility: marginVolatility,
