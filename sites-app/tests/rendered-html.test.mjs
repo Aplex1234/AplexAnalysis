@@ -38,10 +38,17 @@ test("server-renders the AplexAnalysis terminal", async () => {
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/);
 });
 
-test("keeps the desktop comps table inside its panel", async () => {
+test("keeps the comps matrix readable and horizontally contained", async () => {
   const css = await readFile(new URL("../../frontend/app/premium.css", import.meta.url), "utf8");
-  assert.doesNotMatch(css, /\.comps-table\s*\{[^}]*min-width:\s*1320px/s);
-  assert.match(css, /\.comps-table\s*\{[^}]*width:\s*100%/s);
+  assert.match(css, /\.comps-matrix-scroll\s*\{[^}]*overflow-x:\s*auto/s);
+  assert.match(css, /\.comps-matrix-table\s*\{[^}]*width:\s*100%[^}]*min-width:\s*1120px/s);
+  assert.match(css, /\.comps-company-link\s*\{[^}]*text-align:\s*left/s);
+});
+
+test("makes comparable company profiles directly navigable", async () => {
+  const component = await readFile(new URL("../../frontend/components/ResearchTerminal.tsx", import.meta.url), "utf8");
+  assert.match(component, /onClick=\{\(\) => onSelectCompany\(peer\.ticker\)\}/);
+  assert.match(component, /aria-label=\{`Open \$\{peer\.name\} profile`\}/);
 });
 
 test("creates a concise, display-safe company summary", () => {

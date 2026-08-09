@@ -10,6 +10,7 @@ import {
   Theme,
 } from "@carbon/react";
 import {
+  ArrowRight,
   Calculator,
   ChartLineData,
   Chat,
@@ -216,6 +217,17 @@ export function ResearchTerminal() {
     window.localStorage.setItem("aplex-theme-premium", nextTheme);
   }
 
+  function openCompanyProfile(nextTicker: string) {
+    const normalized = nextTicker.trim().toUpperCase();
+    if (!normalized) return;
+    setTickerInput(normalized);
+    setTicker(normalized);
+    setActivePage("overview");
+    setSearchOpen(false);
+    setHighlightedResult(-1);
+    window.scrollTo({ top: 0 });
+  }
+
   return (
     <Theme theme={theme === "dark" ? "g100" : "white"}>
     <div className="terminal-shell" data-theme={theme}>
@@ -362,7 +374,7 @@ export function ResearchTerminal() {
             {analysis.provenance.warnings.map((warning) => (
               <InlineNotification key={warning} kind="warning" lowContrast title="Source status" subtitle={warning} hideCloseButton />
             ))}
-            <PageContent page={activePage} analysis={analysis} />
+            <PageContent page={activePage} analysis={analysis} onSelectCompany={openCompanyProfile} />
           </>
         )}
       </main>
@@ -452,11 +464,11 @@ function CompanyHeader({ analysis }: { analysis: Analysis }) {
   );
 }
 
-function PageContent({ page, analysis }: { page: PageKey; analysis: Analysis }) {
+function PageContent({ page, analysis, onSelectCompany }: { page: PageKey; analysis: Analysis; onSelectCompany: (ticker: string) => void }) {
   if (page === "financials") return <FinancialsView analysis={analysis} />;
   if (page === "valuation") return <MultipleValuationView analysis={analysis} />;
   if (page === "buyTarget") return <BuyTargetView analysis={analysis} />;
-  if (page === "comps") return <CompsView analysis={analysis} />;
+  if (page === "comps") return <CompsView analysis={analysis} onSelectCompany={onSelectCompany} />;
   if (page === "earnings") return <EarningsView analysis={analysis} />;
   if (page === "filings") return <FilingsView analysis={analysis} />;
   if (page === "risks") return <RisksView analysis={analysis} />;
@@ -662,7 +674,7 @@ function BuyTargetView({ analysis }: { analysis: Analysis }) {
   );
 }
 
-function CompsView({ analysis }: { analysis: Analysis }) {
+function CompsView({ analysis, onSelectCompany }: { analysis: Analysis; onSelectCompany: (ticker: string) => void }) {
   const target: ComparableCompany = {
     ticker: analysis.company.ticker,
     name: analysis.company.name,
@@ -689,55 +701,88 @@ function CompsView({ analysis }: { analysis: Analysis }) {
     selection_source_url: analysis.company.description_source_url,
   };
   const rows = [target, ...analysis.comps];
-  const peerPes = analysis.comps
-    .map((company) => company.pe)
-    .filter((value): value is number => value != null && Number.isFinite(value) && value > 0)
-    .sort((a, b) => a - b);
-  const peerMedianPe = peerPes.length ? peerPes[Math.floor(peerPes.length / 2)] : null;
+  const median = (values: Array<number | null>) => {
+    const sorted = values.filter((value): value is number => value != null && Number.isFinite(value)).sort((a, b) => a - b);
+    if (!sorted.length) return null;
+    const middle = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+  };
+  const peerMedianPe = median(analysis.comps.map((company) => company.pe && company.pe > 0 ? company.pe : null));
+  const peerMedianRevenueGrowth = median(analysis.comps.map((company) => company.revenue_growth));
+  const peerMedianOperatingMargin = median(analysis.comps.map((company) => company.operating_margin));
   const growthClass = (value: number | null) => value == null ? "" : value >= 0 ? "is-positive" : "is-negative";
   const fiscalYears = [...new Set(rows.map((row) => row.fiscal_year).filter(Boolean))].sort((a, b) => b - a);
   const fiscalCoverage = fiscalYears.length === 1 ? `Fiscal ${fiscalYears[0]}` : `Fiscal years ${fiscalYears.join(", ")}`;
+  const spread = (value: number | null, benchmark: number | null) => value == null || benchmark == null ? null : value - benchmark;
+  const peSpread = peerMedianPe && target.pe ? target.pe / peerMedianPe - 1 : null;
+  const spreadLabel = (value: number | null, unit: "percent" | "multiple") => {
+    if (value == null) return "Peer comparison unavailable";
+    if (unit === "multiple") return `${value >= 0 ? "+" : ""}${percent(value)} vs peer median`;
+    return `${value >= 0 ? "+" : ""}${(value * 100).toFixed(1)} pts vs peer median`;
+  };
 
   return (
-    <div className="page-stack">
-      <section className="comps-overview" aria-labelledby="comps-heading">
-        <div className="comps-overview-heading">
-          <div>
-            <span>PEER BENCHMARK</span>
-            <h2 id="comps-heading">{analysis.company.name}</h2>
-            <p>{analysis.comps.length ? `Industry-first comparison against ${analysis.comps.length} operating peers selected for business relevance.` : "Current valuation and operating performance. Comparable-company data is temporarily unavailable."}</p>
-          </div>
-          <div className="comps-peer-count"><strong>{analysis.comps.length}</strong><span>peers loaded</span></div>
+    <div className="page-stack comps-page">
+      <section className="comps-hero" aria-labelledby="comps-heading">
+        <div className="comps-hero-copy">
+          <span>COMPARABLE COMPANY ANALYSIS</span>
+          <h2 id="comps-heading">{analysis.company.name} against its closest peers</h2>
+          <p>{analysis.comps.length ? `${analysis.comps.length} companies selected by industry, products, customers, business model, and scale.` : "Target metrics are available, but reliable peer data could not be loaded."}</p>
+          <div className="comps-industry-line"><strong>{analysis.company.industry || "Industry not classified"}</strong><span>{analysis.company.sector || "SEC reporting company"}</span></div>
         </div>
-        <div className="comps-benchmark-strip">
-          <div><span>Target market cap</span><strong>{compactMoney(target.market_cap)}</strong></div>
-          <div><span>Target P / E</span><strong>{multiple(target.pe)}</strong></div>
-          <div><span>Peer median P / E</span><strong>{multiple(peerMedianPe)}</strong></div>
-          <div><span>Candidates screened</span><strong>{analysis.peer_selection.candidates_considered}</strong></div>
+        <div className="comps-universe-panel">
+          <div><span>Selected peers</span><strong>{analysis.comps.length}</strong></div>
+          <div><span>Candidates reviewed</span><strong>{analysis.peer_selection.candidates_considered}</strong></div>
+          <small>Source: {analysis.peer_selection.source_provider}</small>
         </div>
       </section>
 
-      <section className="table-section comps-section">
-        <div className="comps-table-heading">
-          <SectionHeading title="Operating and valuation comparison" detail="Annual filing metrics paired with the latest available delayed price" />
-          <span>{analysis.comps.length ? `${rows.length} companies` : "Target only"}</span>
+      <section className="comps-snapshot" aria-label="Target versus peer medians">
+        <article><span>Valuation</span><strong>{multiple(target.pe)}</strong><small className={growthClass(peSpread)}>{spreadLabel(peSpread, "multiple")}</small></article>
+        <article><span>Revenue growth</span><strong>{percent(target.revenue_growth)}</strong><small className={growthClass(spread(target.revenue_growth, peerMedianRevenueGrowth))}>{spreadLabel(spread(target.revenue_growth, peerMedianRevenueGrowth), "percent")}</small></article>
+        <article><span>Operating margin</span><strong>{percent(target.operating_margin)}</strong><small className={growthClass(spread(target.operating_margin, peerMedianOperatingMargin))}>{spreadLabel(spread(target.operating_margin, peerMedianOperatingMargin), "percent")}</small></article>
+        <article><span>Market value</span><strong>{compactMoney(target.market_cap)}</strong><small>{multiple(peerMedianPe)} peer median P / E</small></article>
+      </section>
+
+      {analysis.comps.length > 0 && (
+        <section className="peer-directory" aria-labelledby="peer-directory-heading">
+          <div className="comps-section-heading">
+            <div><h3 id="peer-directory-heading">Peer directory</h3><p>Select a company to open its full AplexAnalysis profile.</p></div>
+            <span>{analysis.comps.length} profiles</span>
+          </div>
+          <div className="peer-directory-grid">
+            {analysis.comps.map((peer) => (
+              <button key={peer.ticker} type="button" className="peer-profile-card" onClick={() => onSelectCompany(peer.ticker)} aria-label={`Open ${peer.name} profile`}>
+                <div className="peer-profile-identity"><span>{peer.ticker.slice(0, 2)}</span><div><strong>{peer.name}</strong><small>{peer.ticker}</small></div><ArrowRight size={18} /></div>
+                <p>{peer.selection_reason}</p>
+                <div className="peer-profile-metrics"><span><small>Market cap</small><strong>{compactMoney(peer.market_cap)}</strong></span><span><small>Revenue growth</small><strong className={growthClass(peer.revenue_growth)}>{percent(peer.revenue_growth)}</strong></span><span><small>P / E</small><strong>{multiple(peer.pe)}</strong></span></div>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section className="comps-matrix-section" aria-labelledby="comps-matrix-heading">
+        <div className="comps-section-heading">
+          <div><h3 id="comps-matrix-heading">Comparison matrix</h3><p>Annual filing metrics with the latest available delayed market data.</p></div>
+          <span>{rows.length} companies</span>
         </div>
-        <div className="comps-table-scroll">
-          <table className="research-table comps-table">
+        <div className="comps-matrix-scroll">
+          <table className="comps-matrix-table">
             <thead>
-              <tr><th>Company</th><th>Market cap</th><th>Revenue growth</th><th>Earnings growth</th><th>Gross margin</th><th>Operating margin</th><th>P / E</th></tr>
+              <tr className="comps-column-groups"><th rowSpan={2}>Company</th><th colSpan={1}>Scale</th><th colSpan={2}>Growth</th><th colSpan={2}>Profitability</th><th colSpan={2}>Valuation</th><th rowSpan={2}><span className="visually-hidden">Profile</span></th></tr>
+              <tr><th>Market cap</th><th>Revenue</th><th>Earnings</th><th>Gross margin</th><th>Operating margin</th><th>P / E</th><th>Price / book</th></tr>
             </thead>
             <tbody>
               {rows.map((row) => {
                 const isTarget = row.ticker === analysis.company.ticker;
                 return (
-                  <tr key={row.ticker} className={isTarget ? "target-row" : ""}>
+                  <tr key={row.ticker} className={isTarget ? "is-target" : ""}>
                     <th scope="row">
-                      <div className="comps-company-cell">
-                        <span className="comps-symbol">{row.ticker}</span>
-                        <span className="comps-company-name">{row.name}</span>
-                        {isTarget && <span className="comps-target-label">Target</span>}
-                      </div>
+                      <button type="button" className="comps-company-link" onClick={() => onSelectCompany(row.ticker)} aria-label={isTarget ? `Open ${row.name} overview` : `Open ${row.name} profile`}>
+                        <span className="comps-company-avatar">{row.ticker.slice(0, 2)}</span>
+                        <span className="comps-company-copy"><strong>{row.name}</strong><small>{row.ticker}{isTarget ? " / Current company" : ""}</small></span>
+                      </button>
                     </th>
                     <td>{compactMoney(row.market_cap)}</td>
                     <td className={growthClass(row.revenue_growth)}>{percent(row.revenue_growth)}</td>
@@ -745,43 +790,37 @@ function CompsView({ analysis }: { analysis: Analysis }) {
                     <td>{percent(row.gross_margin)}</td>
                     <td>{percent(row.operating_margin)}</td>
                     <td>{multiple(row.pe)}</td>
+                    <td>{multiple(row.price_to_book)}</td>
+                    <td><button type="button" className="comps-open-profile" onClick={() => onSelectCompany(row.ticker)} aria-label={`Open ${row.name} profile`}><ArrowRight size={16} /></button></td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
         </div>
-        <div className="comps-methodology">
+        {!analysis.comps.length && <div className="comps-empty"><p>No reliable peer rows were available for this company. AplexAnalysis will retry when the analysis is refreshed.</p></div>}
+        <div className="comps-methodology-v2">
           <Information size={16} />
-          <p>
-            <strong>How peers are built</strong>
-            <span>{analysis.provenance.comparables} {fiscalCoverage} annual data is shown where available.</span>
-            <a href={analysis.peer_selection.source_url} target="_blank" rel="noreferrer">Open {analysis.peer_selection.source_provider}</a>
-          </p>
+          <div><strong>Peer methodology</strong><p>{analysis.provenance.comparables} {fiscalCoverage} data is shown where available.</p></div>
+          <a href={analysis.peer_selection.source_url} target="_blank" rel="noreferrer">View source</a>
         </div>
-        {!analysis.comps.length && <div className="comps-empty"><p>No reliable peer rows were available for this company. The target metrics remain current, and the app will retry peer retrieval on the next analysis.</p></div>}
       </section>
 
       {analysis.comps.length > 0 && (
-        <section className="peer-rationale-section" aria-labelledby="peer-rationale-heading">
-          <div className="peer-rationale-heading">
-            <div>
-              <span>SELECTION RATIONALE</span>
-              <h3 id="peer-rationale-heading">Why these companies are comparable</h3>
-              <p>Industry similarity is weighted first, followed by shared products, customers, business model and company size.</p>
-            </div>
-            <small>{analysis.peer_selection.selection_version}</small>
+        <section className="peer-rationale-v2" aria-labelledby="peer-rationale-heading">
+          <div className="comps-section-heading">
+            <div><h3 id="peer-rationale-heading">Why each peer belongs</h3><p>Industry similarity is weighted first, followed by products, customers, business model, and size.</p></div>
+            <span>{analysis.peer_selection.selection_version}</span>
           </div>
-          <div className="peer-rationale-grid">
-            {analysis.comps.map((peer, index) => (
+          <div className="peer-rationale-list">
+            {analysis.comps.map((peer) => (
               <article key={peer.ticker}>
-                <div className="peer-rationale-company">
-                  <span>{String(index + 1).padStart(2, "0")}</span>
-                  <div><strong>{peer.name}</strong><small>{peer.ticker} / relevance {peer.selection_score.toFixed(1)}</small></div>
-                </div>
+                <button type="button" className="peer-rationale-link" onClick={() => onSelectCompany(peer.ticker)}>
+                  <span>{peer.ticker}</span><strong>{peer.name}</strong><ArrowRight size={16} />
+                </button>
                 <p>{peer.selection_reason}</p>
-                {peer.selection_factors.length > 0 && <div className="peer-factor-list">{peer.selection_factors.slice(0, 3).map((factor) => <span key={factor}>{factor}</span>)}</div>}
-                <a href={peer.selection_source_url} target="_blank" rel="noreferrer">Source: {peer.selection_source}</a>
+                <div className="peer-rationale-meta"><span>Relevance {peer.selection_score.toFixed(1)}</span>{peer.selection_factors.slice(0, 3).map((factor) => <span key={factor}>{factor}</span>)}</div>
+                <a href={peer.selection_source_url} target="_blank" rel="noreferrer">{peer.selection_source}</a>
               </article>
             ))}
           </div>
