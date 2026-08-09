@@ -593,6 +593,11 @@ async function fetchFilingRisks(filing: Filing): Promise<CompanyRisk[]> {
   }
 }
 
+export async function fetchCompanyRisks(financials: FinancialSource): Promise<CompanyRisk[]> {
+  const latestAnnualFiling = financials.filings.find((filing) => ["10-K", "20-F", "40-F"].includes(filing.form));
+  return latestAnnualFiling ? fetchFilingRisks(latestAnnualFiling) : [];
+}
+
 function calculateBuyTarget(
   metrics: ReturnType<typeof calculateMetrics>,
   valuation: ReturnType<typeof calculateValuation>,
@@ -880,6 +885,20 @@ async function fetchNasdaqStockUniverse() {
     return result;
   }
   return fetchNasdaqStockUniverseLive();
+}
+
+export async function fetchPopularUniverseTickers(limit = 100) {
+  const universe = await fetchNasdaqStockUniverse();
+  return universe.rows
+    .map((row) => ({
+      ticker: String(row.symbol ?? "").trim().toUpperCase(),
+      name: String(row.name ?? ""),
+      marketCap: Number(String(row.marketCap ?? "").replaceAll(",", "")),
+    }))
+    .filter((row) => /^[A-Z][A-Z0-9.-]{0,9}$/.test(row.ticker) && Number.isFinite(row.marketCap) && row.marketCap > 0 && isOperatingCommonStock(row.name))
+    .sort((left, right) => right.marketCap - left.marketCap)
+    .slice(0, Math.max(0, limit))
+    .map((row) => row.ticker);
 }
 
 async function findIndustryPeers(

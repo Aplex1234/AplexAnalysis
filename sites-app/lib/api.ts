@@ -1,1 +1,1 @@
-export { fetchAnalysis, fetchStockPriceHistory, runValuation, searchSecurities } from "../../frontend/lib/api";
+export { fetchAnalysis, fetchStockPriceHistory, prefetchAnalysis, runValuation, searchSecurities } from "../../frontend/lib/api";

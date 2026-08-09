@@ -1,26 +1,33 @@
-import type { Analysis, DcfAssumptions } from "@/lib/types";
+import type { Analysis, AnalysisSection, DcfAssumptions } from "@/lib/types";
 import {
   buildAnalysis,
   fetchAnalystEstimates,
+  fetchCompanyRisks,
   fetchComparableCompanies,
   fetchFinancialFingerprint,
   fetchFinancialSource,
+  fetchPopularUniverseTickers,
   fetchQuote,
   type AnalystEstimates,
+  type CompanyRisk,
   type FinancialSource,
   type PeerSet,
   type Quote,
 } from "./analysis.ts";
 import {
+  acquireCacheRefreshLease,
   CACHE_TTLS,
   extendFinancialFreshness,
   hasSameFinancialFingerprint,
   listDueRefreshTickers,
+  listUncachedTickers,
   markScheduledRefresh,
   readComponentCache,
   readFinancialSourceCache,
   recordCompanyViewInBackground,
   recordProviderFailure,
+  releaseCacheRefreshLease,
+  scheduleBackgroundRefresh,
   writeAnalysisSnapshot,
   writeComponentCache,
   writeFinancialSourceCache,
@@ -45,8 +52,19 @@ type Loaded<T> = {
   cached?: CachedComponent<T> | null;
 };
 
+export const ALL_ANALYSIS_SECTIONS: AnalysisSection[] = [
+  "overview", "financials", "valuation", "buyTarget", "comps", "earnings", "filings", "risks", "research",
+];
+
 function freshness(status: SourceStatus, asOf: string | null, freshUntil: string | null, source: string): FreshnessItem {
   return { status, as_of: asOf, fresh_until: freshUntil, source };
+}
+
+async function scheduleSharedRefresh(cacheKey: string, task: () => Promise<unknown>) {
+  if (!await acquireCacheRefreshLease(cacheKey)) return false;
+  const guarded = task().finally(() => releaseCacheRefreshLease(cacheKey));
+  if (!await scheduleBackgroundRefresh(guarded)) void guarded.catch(() => undefined);
+  return true;
 }
 
 async function loadFinancials(ticker: string): Promise<{
@@ -89,7 +107,7 @@ async function loadFinancials(ticker: string): Promise<{
   }
 
   try {
-    const source = await fetchFinancialSource(ticker);
+    const source = await fetchFinancialSource(ticker, false);
     const stored = await writeFinancialSourceCache(ticker, source);
     return {
       data: source,
@@ -120,6 +138,17 @@ async function loadFinancials(ticker: string): Promise<{
 async function loadQuote(ticker: string, financials: FinancialSource | null): Promise<Loaded<Quote>> {
   const cached = await readComponentCache<Quote>(ticker, "quote", COMPONENT_SOURCE_VERSIONS.quote);
   if (cached?.isFresh) return { data: cached.data, cached, freshness: freshness("cached", cached.data.as_of, cached.freshUntil, cached.provider ?? "Cached quote") };
+  if (cached) {
+    await scheduleSharedRefresh(`quote:${ticker}`, async () => {
+      try {
+        const quote = await fetchQuote(ticker);
+        if (financials) await writeComponentCache(ticker, financials.profile, "quote", quote, COMPONENT_SOURCE_VERSIONS.quote, CACHE_TTLS.quote, quote.provider, Date.now());
+      } catch (error) {
+        await recordProviderFailure(ticker, "quote", error, cached.listingId);
+      }
+    });
+    return { data: cached.data, cached, freshness: freshness("stale", cached.data.as_of, cached.freshUntil, cached.provider ?? "Last successful quote; refreshing") };
+  }
   const refreshStartedAt = Date.now();
   try {
     const quote = await fetchQuote(ticker);
@@ -137,6 +166,17 @@ async function loadQuote(ticker: string, financials: FinancialSource | null): Pr
 async function loadEstimates(ticker: string, financials: FinancialSource | null): Promise<Loaded<AnalystEstimates>> {
   const cached = await readComponentCache<AnalystEstimates>(ticker, "analyst_estimates", COMPONENT_SOURCE_VERSIONS.analyst_estimates);
   if (cached?.isFresh) return { data: cached.data, cached, freshness: freshness("cached", cached.data.as_of, cached.freshUntil, cached.provider ?? "Cached analyst estimates") };
+  if (cached) {
+    await scheduleSharedRefresh(`analyst-estimates:${ticker}`, async () => {
+      try {
+        const estimates = await fetchAnalystEstimates(ticker);
+        if (financials) await writeComponentCache(ticker, financials.profile, "analyst_estimates", estimates, COMPONENT_SOURCE_VERSIONS.analyst_estimates, CACHE_TTLS.analyst_estimates, estimates.provider, Date.now());
+      } catch (error) {
+        await recordProviderFailure(ticker, "analyst_estimates", error, cached.listingId);
+      }
+    });
+    return { data: cached.data, cached, freshness: freshness("stale", cached.data.as_of, cached.freshUntil, cached.provider ?? "Last successful estimates; refreshing") };
+  }
   const refreshStartedAt = Date.now();
   try {
     const estimates = await fetchAnalystEstimates(ticker);
@@ -151,6 +191,67 @@ async function loadEstimates(ticker: string, financials: FinancialSource | null)
   }
 }
 
+function annualRiskVersion(financials: FinancialSource) {
+  const annual = financials.filings.find((filing) => ["10-K", "20-F", "40-F"].includes(filing.form));
+  return {
+    annual,
+    sourceVersion: `${COMPONENT_SOURCE_VERSIONS.risks}:${annual?.accession_number || "none"}`,
+  };
+}
+
+async function loadRisks(ticker: string, financials: FinancialSource | null): Promise<Loaded<CompanyRisk[]>> {
+  if (!financials) return { data: null, freshness: freshness("unavailable", null, null, "Annual filing risks unavailable") };
+  const { annual, sourceVersion } = annualRiskVersion(financials);
+  if (!annual) return { data: [], freshness: freshness("unavailable", null, null, "No annual filing available") };
+  const cached = await readComponentCache<CompanyRisk[]>(ticker, "risks", sourceVersion);
+  if (cached?.isFresh) return { data: cached.data, cached, freshness: freshness("cached", annual.filing_date, cached.freshUntil, cached.provider ?? "Cached annual filing risks") };
+  if (cached) {
+    await scheduleSharedRefresh(`risks:${ticker}:${annual.accession_number}`, async () => {
+      try {
+        const risks = await fetchCompanyRisks(financials);
+        await writeComponentCache(ticker, financials.profile, "risks", risks, sourceVersion, CACHE_TTLS.risks, "SEC annual filing", Date.now());
+      } catch (error) {
+        await recordProviderFailure(ticker, "risks", error, cached.listingId);
+      }
+    });
+    return { data: cached.data, cached, freshness: freshness("stale", annual.filing_date, cached.freshUntil, cached.provider ?? "Last successful annual filing risks; refreshing") };
+  }
+  const refreshStartedAt = Date.now();
+  try {
+    const risks = financials.filingRisks.length ? financials.filingRisks : await fetchCompanyRisks(financials);
+    const stored = await writeComponentCache(ticker, financials.profile, "risks", risks, sourceVersion, CACHE_TTLS.risks, "SEC annual filing", refreshStartedAt);
+    return { data: risks, freshness: freshness("live", annual.filing_date, stored?.freshUntil ?? null, "SEC annual filing") };
+  } catch (error) {
+    await recordProviderFailure(ticker, "risks", error, cached?.listingId);
+    if (cached) return { data: cached.data, cached, freshness: freshness("stale", annual.filing_date, cached.freshUntil, cached.provider ?? "Last successful annual filing risks") };
+    return { data: [], freshness: freshness("unavailable", annual.filing_date, null, "Annual filing risks unavailable") };
+  }
+}
+
+async function fetchAndStorePeers(
+  ticker: string,
+  financials: FinancialSource,
+  quote: Quote | null,
+): Promise<Loaded<PeerSet>> {
+  const refreshStartedAt = Date.now();
+  const peerSet = await fetchComparableCompanies(
+    ticker,
+    financials.profile,
+    quote?.market_cap ?? null,
+    financials.filings,
+    async (peerTicker) => {
+      const peerFinancials = await loadFinancials(peerTicker);
+      if (!peerFinancials.data) throw new Error(`Financial data unavailable for ${peerTicker}`);
+      const peerQuote = await loadQuote(peerTicker, peerFinancials.data);
+      if (!peerQuote.data) throw new Error(`Quote unavailable for ${peerTicker}`);
+      return { financials: peerFinancials.data, quote: peerQuote.data };
+    },
+  );
+  const stored = await writeComponentCache(ticker, financials.profile, "comps", peerSet, COMPONENT_SOURCE_VERSIONS.comps, CACHE_TTLS.comps, "AplexAnalysis comps engine", refreshStartedAt);
+  await writePeerSelectionAudit(ticker, financials.profile, peerSet);
+  return { data: peerSet, freshness: freshness("live", stored?.fetchedAt ?? new Date().toISOString(), stored?.freshUntil ?? null, peerSet.methodology) };
+}
+
 async function loadPeers(
   ticker: string,
   financials: FinancialSource | null,
@@ -159,24 +260,18 @@ async function loadPeers(
   const cached = await readComponentCache<PeerSet>(ticker, "comps", COMPONENT_SOURCE_VERSIONS.comps);
   if (cached?.isFresh) return { data: cached.data, cached, freshness: freshness("cached", cached.fetchedAt, cached.freshUntil, cached.data.methodology) };
   if (!financials) return { data: cached?.data ?? null, cached, freshness: cached ? freshness("stale", cached.fetchedAt, cached.freshUntil, cached.data.methodology) : freshness("unavailable", null, null, "Comparable companies unavailable") };
-  const refreshStartedAt = Date.now();
+  if (cached) {
+    await scheduleSharedRefresh(`comps:${ticker}`, async () => {
+      try {
+        await fetchAndStorePeers(ticker, financials, quote);
+      } catch (error) {
+        await recordProviderFailure(ticker, "comps", error, cached.listingId);
+      }
+    });
+    return { data: cached.data, cached, freshness: freshness("stale", cached.fetchedAt, cached.freshUntil, `${cached.data.methodology}; refreshing`) };
+  }
   try {
-    const peerSet = await fetchComparableCompanies(
-      ticker,
-      financials.profile,
-      quote?.market_cap ?? null,
-      financials.filings,
-      async (peerTicker) => {
-        const peerFinancials = await loadFinancials(peerTicker);
-        if (!peerFinancials.data) throw new Error(`Financial data unavailable for ${peerTicker}`);
-        const peerQuote = await loadQuote(peerTicker, peerFinancials.data);
-        if (!peerQuote.data) throw new Error(`Quote unavailable for ${peerTicker}`);
-        return { financials: peerFinancials.data, quote: peerQuote.data };
-      },
-    );
-    const stored = await writeComponentCache(ticker, financials.profile, "comps", peerSet, COMPONENT_SOURCE_VERSIONS.comps, CACHE_TTLS.comps, "AplexAnalysis comps engine", refreshStartedAt);
-    await writePeerSelectionAudit(ticker, financials.profile, peerSet);
-    return { data: peerSet, freshness: freshness("live", stored?.fetchedAt ?? new Date().toISOString(), stored?.freshUntil ?? null, peerSet.methodology) };
+    return await fetchAndStorePeers(ticker, financials, quote);
   } catch (error) {
     await recordProviderFailure(ticker, "comps", error, cached?.listingId);
     if (cached) return { data: cached.data, cached, freshness: freshness("stale", cached.fetchedAt, cached.freshUntil, cached.data.methodology) };
@@ -250,6 +345,7 @@ export function buildOverviewSnapshot(analysis: Analysis): Analysis {
   return {
     ...analysis,
     data_scope: "overview",
+    loaded_sections: ["overview"],
     financials: analysis.financials.map((period) => ({
       ...period,
       values: {
@@ -274,27 +370,94 @@ export function buildOverviewSnapshot(analysis: Analysis): Analysis {
   };
 }
 
-export async function rebuildAnalysisFromComponentCaches(
-  rawTicker: string,
-  requested?: Partial<DcfAssumptions>,
-  persistSnapshot = requested == null,
-) {
+export function buildSectionSnapshot(analysis: Analysis, section: AnalysisSection): Analysis {
+  if (section === "overview") return buildOverviewSnapshot(analysis);
+  const overview = buildOverviewSnapshot(analysis);
+  const needsDetailedFinancials = ["financials", "valuation", "buyTarget"].includes(section);
+  return {
+    ...overview,
+    data_scope: "partial",
+    loaded_sections: ["overview", section],
+    financials: needsDetailedFinancials ? analysis.financials : overview.financials,
+    quarterly_financials: needsDetailedFinancials ? analysis.quarterly_financials : [],
+    analyst_estimates: section === "earnings" ? analysis.analyst_estimates : overview.analyst_estimates,
+    comps: section === "comps" ? analysis.comps : [],
+    filings: section === "filings" ? analysis.filings : [],
+    risks: section === "risks" ? analysis.risks : [],
+  };
+}
+
+function emptyEstimates(ticker: string): AnalystEstimates {
+  return {
+    quarterly: [],
+    annual: [],
+    provider: "Not loaded for Overview",
+    as_of: null,
+    source_url: `https://www.nasdaq.com/market-activity/stocks/${ticker.toLowerCase()}/earnings`,
+    disclosure: "Analyst estimates load when the Earnings section is opened.",
+  };
+}
+
+function emptyPeerSet(): PeerSet {
+  return {
+    companies: [],
+    methodology: "Comparable companies load separately from Overview",
+    source_provider: "Not loaded for Overview",
+    source_url: "https://www.nasdaq.com/market-activity/stocks/screener",
+    source_as_of: new Date().toISOString(),
+    candidates_considered: 0,
+    selection_version: COMPONENT_SOURCE_VERSIONS.comps,
+  };
+}
+
+export async function rebuildOverviewFromComponentCaches(rawTicker: string) {
   const ticker = normalizeTicker(rawTicker);
   const financials = await loadFinancials(ticker);
-  const [quote, estimates] = await Promise.all([
-    loadQuote(ticker, financials.data),
-    loadEstimates(ticker, financials.data),
-  ]);
-  const peers = await loadPeers(ticker, financials.data, quote.data);
-  const analysis = await buildAnalysis(ticker, requested, {
+  const quote = await loadQuote(ticker, financials.data);
+  const analysis = await buildAnalysis(ticker, undefined, {
     financials: financials.data ?? undefined,
     financialSourceMode: financials.data ? (financials.freshness.status === "live" ? "live-sec" : "normalized-cache") : undefined,
     quote: quote.data ?? undefined,
-    analystEstimates: estimates.data ?? undefined,
-    peerSet: peers.data ?? undefined,
+    analystEstimates: emptyEstimates(ticker),
+    peerSet: emptyPeerSet(),
     warnings: financials.warnings,
   });
-  const pageStatus = [financials.freshness, quote.freshness, estimates.freshness, peers.freshness]
+  const enriched = attachFreshness(analysis, [financials.freshness, quote.freshness].some((item) => item.status === "stale") ? "stale" : "live", {
+    financials: financials.freshness,
+    quote: quote.freshness,
+    analystEstimates: freshness("unavailable", null, null, "Loads with Earnings"),
+    comps: freshness("unavailable", null, null, "Loads with Comps"),
+  });
+  if (financials.cache?.listingId) await recordCompanyViewInBackground(ticker, financials.cache.listingId);
+  return buildOverviewSnapshot(enriched);
+}
+
+export async function rebuildAnalysisSectionFromComponentCaches(rawTicker: string, section: AnalysisSection) {
+  if (section === "overview") return rebuildOverviewFromComponentCaches(rawTicker);
+  const ticker = normalizeTicker(rawTicker);
+  const financials = await loadFinancials(ticker);
+  const quote = await loadQuote(ticker, financials.data);
+  const estimates = section === "earnings"
+    ? await loadEstimates(ticker, financials.data)
+    : { data: emptyEstimates(ticker), freshness: freshness("unavailable", null, null, "Loads with Earnings") };
+  const peers = section === "comps"
+    ? await loadPeers(ticker, financials.data, quote.data)
+    : { data: emptyPeerSet(), freshness: freshness("unavailable", null, null, "Loads with Comps") };
+  const risks = section === "risks"
+    ? await loadRisks(ticker, financials.data)
+    : { data: [] as CompanyRisk[], freshness: freshness("unavailable", null, null, "Loads with Risks") };
+  const financialsForSection = financials.data
+    ? { ...financials.data, filingRisks: risks.data ?? [] }
+    : undefined;
+  const analysis = await buildAnalysis(ticker, undefined, {
+    financials: financialsForSection,
+    financialSourceMode: financials.data ? (financials.freshness.status === "live" ? "live-sec" : "normalized-cache") : undefined,
+    quote: quote.data ?? undefined,
+    analystEstimates: estimates.data ?? emptyEstimates(ticker),
+    peerSet: peers.data ?? emptyPeerSet(),
+    warnings: financials.warnings,
+  });
+  const pageStatus = [financials.freshness, quote.freshness, estimates.freshness, peers.freshness, risks.freshness]
     .some((item) => item.status === "stale") ? "stale" : "live";
   const enriched = attachFreshness(analysis, pageStatus, {
     financials: financials.freshness,
@@ -302,22 +465,77 @@ export async function rebuildAnalysisFromComponentCaches(
     analystEstimates: estimates.freshness,
     comps: peers.freshness,
   });
+  return buildSectionSnapshot(enriched, section);
+}
+
+export async function rebuildAnalysisFromComponentCaches(
+  rawTicker: string,
+  requested?: Partial<DcfAssumptions>,
+  persistSnapshot = requested == null,
+) {
+  const ticker = normalizeTicker(rawTicker);
+  const financials = await loadFinancials(ticker);
+  const [quote, estimates, risks] = await Promise.all([
+    loadQuote(ticker, financials.data),
+    loadEstimates(ticker, financials.data),
+    loadRisks(ticker, financials.data),
+  ]);
+  const peers = await loadPeers(ticker, financials.data, quote.data);
+  const financialsWithRisks = financials.data
+    ? { ...financials.data, filingRisks: risks.data ?? [] }
+    : undefined;
+  const analysis = await buildAnalysis(ticker, requested, {
+    financials: financialsWithRisks,
+    financialSourceMode: financials.data ? (financials.freshness.status === "live" ? "live-sec" : "normalized-cache") : undefined,
+    quote: quote.data ?? undefined,
+    analystEstimates: estimates.data ?? undefined,
+    peerSet: peers.data ?? undefined,
+    warnings: financials.warnings,
+  });
+  const pageStatus = [financials.freshness, quote.freshness, estimates.freshness, peers.freshness, risks.freshness]
+    .some((item) => item.status === "stale") ? "stale" : "live";
+  const enriched = attachFreshness(analysis, pageStatus, {
+    financials: financials.freshness,
+    quote: quote.freshness,
+    analystEstimates: estimates.freshness,
+    comps: peers.freshness,
+  });
+  const complete = { ...enriched, data_scope: "full" as const, loaded_sections: ALL_ANALYSIS_SECTIONS };
   if (persistSnapshot) {
-    const stored = await writeAnalysisSnapshot(enriched);
+    const stored = await writeAnalysisSnapshot(complete);
     if (stored) await recordCompanyViewInBackground(ticker, stored.listingId);
   }
-  return enriched;
+  return complete;
 }
 
 export async function refreshDueCompanies(limit = 3, excludeTicker?: string) {
   const due = await listDueRefreshTickers(limit, excludeTicker);
   for (const item of due) {
     try {
-      await rebuildAnalysisFromComponentCaches(item.ticker);
+      await rebuildOverviewFromComponentCaches(item.ticker);
       await markScheduledRefresh(item.listing_id, true);
     } catch {
       await markScheduledRefresh(item.listing_id, false);
     }
   }
   return due.length;
+}
+
+export async function warmPopularCompanies(seedSize = 100, batchSize = 2) {
+  const popularTickers = await fetchPopularUniverseTickers(seedSize);
+  const uncached = await listUncachedTickers(popularTickers, batchSize);
+  let warmed = 0;
+  for (const ticker of uncached) {
+    const leaseKey = `overview:${ticker}`;
+    if (!await acquireCacheRefreshLease(leaseKey, 60_000)) continue;
+    try {
+      await rebuildOverviewFromComponentCaches(ticker);
+      warmed += 1;
+    } catch {
+      // Another scheduled pass can retry without blocking the rest of the batch.
+    } finally {
+      await releaseCacheRefreshLease(leaseKey);
+    }
+  }
+  return warmed;
 }

@@ -72,6 +72,38 @@ test("keeps restored startup focus from opening the security search menu", async
   assert.match(component, /onChange=\{\(event\) => \{[\s\S]*?setSearchOpen\(true\)/);
 });
 
+test("routes a cold Overview through the lightweight shared-cache pipeline", async () => {
+  const route = await readFile(new URL("../app/api/v1/companies/[ticker]/analysis/route.ts", import.meta.url), "utf8");
+  const service = await readFile(new URL("../lib/server/analysis-service.ts", import.meta.url), "utf8");
+  assert.match(route, /rebuildOverviewFromComponentCaches/);
+  assert.match(route, /overviewOnly\s*\?\s*await rebuildOverviewFromComponentCaches\(normalizedTicker\)/);
+  const overviewBuilder = service.match(/export async function rebuildOverviewFromComponentCaches[\s\S]*?\n}\n/)?.[0] ?? "";
+  assert.match(overviewBuilder, /loadFinancials/);
+  assert.match(overviewBuilder, /loadQuote/);
+  assert.doesNotMatch(overviewBuilder, /loadPeers|loadEstimates/);
+});
+
+test("loads expensive research sections independently after Overview", async () => {
+  const route = await readFile(new URL("../app/api/v1/companies/[ticker]/analysis/route.ts", import.meta.url), "utf8");
+  const component = await readFile(new URL("../../frontend/components/ResearchTerminal.tsx", import.meta.url), "utf8");
+  const api = await readFile(new URL("../../frontend/lib/api.ts", import.meta.url), "utf8");
+  assert.match(route, /rebuildAnalysisSectionFromComponentCaches/);
+  assert.match(route, /buildSectionSnapshot/);
+  assert.match(api, /AnalysisSection/);
+  assert.match(component, /analysis\.loaded_sections/);
+  assert.match(component, /fetchAnalysis\(ticker, controller\.signal, activePage\)/);
+});
+
+test("coordinates shared refreshes and gradually warms popular companies", async () => {
+  const cache = await readFile(new URL("../lib/server/analysis-cache.ts", import.meta.url), "utf8");
+  const worker = await readFile(new URL("../worker/index.ts", import.meta.url), "utf8");
+  const api = await readFile(new URL("../../frontend/lib/api.ts", import.meta.url), "utf8");
+  assert.match(cache, /cache_refresh_leases/);
+  assert.match(cache, /acquireCacheRefreshLease/);
+  assert.match(worker, /warmPopularCompanies/);
+  assert.match(api, /prefetchAnalysis/);
+});
+
 test("creates a concise, display-safe company summary", () => {
   const source = "Example Corp. designs software for business customers. It also provides cloud services and support. A third sentence should not appear in the overview.";
   assert.equal(
@@ -660,4 +692,17 @@ test("serves a complete AAPL analysis through the hosted API", async () => {
   assert.deepEqual(overviewPayload.data.filings, []);
   assert.deepEqual(overviewPayload.data.risks, []);
   assert.ok(JSON.stringify(overviewPayload.data).length < JSON.stringify(payload.data).length * 0.5);
+
+  const financialsResponse = await worker.fetch(
+    new Request("http://localhost/api/v1/companies/AAPL/analysis?view=financials"),
+    { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
+    { waitUntil() {}, passThroughOnException() {} },
+  );
+  assert.equal(financialsResponse.status, 200);
+  const financialsPayload = await financialsResponse.json();
+  assert.equal(financialsPayload.data.data_scope, "partial");
+  assert.deepEqual(financialsPayload.data.loaded_sections, ["overview", "financials"]);
+  assert.ok(financialsPayload.data.quarterly_financials.length > 0);
+  assert.deepEqual(financialsPayload.data.comps, []);
+  assert.deepEqual(financialsPayload.data.analyst_estimates.annual, []);
 });

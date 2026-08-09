@@ -1,7 +1,7 @@
 /** Cloudflare Worker entry point for the vinext-starter template. */
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
-import { refreshDueCompanies } from "../lib/server/analysis-service";
+import { refreshDueCompanies, warmPopularCompanies } from "../lib/server/analysis-service";
 import { pruneCacheEvents } from "../lib/server/analysis-cache";
 
 interface Env {
@@ -61,7 +61,7 @@ const worker = {
     return response;
   },
   async scheduled(_controller: unknown, _env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(Promise.all([refreshDueCompanies(5), pruneCacheEvents(30)]));
+    ctx.waitUntil(Promise.all([refreshDueCompanies(8), warmPopularCompanies(100, 2), pruneCacheEvents(30)]));
   },
 };
 

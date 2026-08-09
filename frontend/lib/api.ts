@@ -1,6 +1,7 @@
-import type { Analysis, DcfAssumptions, SecuritySearchResult, StockPriceHistory } from "./types";
+import type { Analysis, AnalysisSection, DcfAssumptions, SecuritySearchResult, StockPriceHistory } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "/api/v1";
+const overviewRequests = new Map<string, Promise<Analysis>>();
 
 async function parseResponse(response: Response): Promise<Analysis> {
   const payload = await response.json();
@@ -11,12 +12,29 @@ async function parseResponse(response: Response): Promise<Analysis> {
   return payload.data as Analysis;
 }
 
-export async function fetchAnalysis(ticker: string, signal?: AbortSignal, scope: "overview" | "full" = "full"): Promise<Analysis> {
-  const query = scope === "overview" ? "?view=overview" : "";
+async function requestAnalysis(ticker: string, signal: AbortSignal | undefined, scope: AnalysisSection | "full") {
+  const query = scope === "full" ? "" : `?view=${encodeURIComponent(scope)}`;
   const response = await fetch(`${API_URL}/companies/${encodeURIComponent(ticker)}/analysis${query}`, {
     signal,
   });
   return parseResponse(response);
+}
+
+export function fetchAnalysis(ticker: string, signal?: AbortSignal, scope: AnalysisSection | "full" = "full"): Promise<Analysis> {
+  if (scope !== "overview") return requestAnalysis(ticker, signal, scope);
+  const key = ticker.trim().toUpperCase();
+  const existing = overviewRequests.get(key);
+  if (existing) return existing;
+  const request = requestAnalysis(key, signal, scope);
+  overviewRequests.set(key, request);
+  void request.finally(() => {
+    if (overviewRequests.get(key) === request) overviewRequests.delete(key);
+  }).catch(() => undefined);
+  return request;
+}
+
+export function prefetchAnalysis(ticker: string) {
+  void fetchAnalysis(ticker, undefined, "overview").catch(() => undefined);
 }
 
 export async function runValuation(ticker: string, assumptions: DcfAssumptions): Promise<Analysis> {

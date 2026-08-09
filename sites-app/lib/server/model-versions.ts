@@ -7,4 +7,5 @@ export const COMPONENT_SOURCE_VERSIONS = {
   quote: "nasdaq-quote-1.0",
   analyst_estimates: "nasdaq-estimates-1.0",
   comps: "comps-engine-2.8",
+  risks: "sec-risks-1.0",
 } as const;

@@ -1,5 +1,6 @@
 export type {
   Analysis,
+  AnalysisSection,
   DcfAssumptions,
   FinancialPeriod,
   FinancialValues,

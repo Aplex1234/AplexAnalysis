@@ -19,6 +19,7 @@ export const CACHE_TTLS = {
   quote: 10 * 60 * 1000,
   analyst_estimates: 12 * 60 * 60 * 1000,
   comps: 2 * 60 * 60 * 1000,
+  risks: 24 * 60 * 60 * 1000,
   financial_check: 12 * 60 * 60 * 1000,
   popular_refresh: 30 * 60 * 1000,
 } as const;
@@ -112,6 +113,10 @@ const CACHE_SCHEMA_SQL = [
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS idx_cache_refresh_schedule_due ON cache_refresh_schedule (next_refresh_at, priority, view_count)`,
+  `CREATE TABLE IF NOT EXISTS cache_refresh_leases (
+    cache_key TEXT PRIMARY KEY NOT NULL, acquired_at TEXT NOT NULL, expires_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_cache_refresh_leases_expires_at ON cache_refresh_leases (expires_at)`,
   `CREATE TABLE IF NOT EXISTS peer_selection_runs (
     id TEXT PRIMARY KEY NOT NULL,
     target_listing_id TEXT NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
@@ -516,7 +521,7 @@ export async function extendFinancialFreshness(ticker: string, cached: CachedFin
   return { ...cached, sourceFingerprint: fingerprint.accessionNumber, sourceFilingAt: fingerprint.filingDate, freshUntil, isFresh: true };
 }
 
-export type ComponentName = "quote" | "analyst_estimates" | "comps";
+export type ComponentName = "quote" | "analyst_estimates" | "comps" | "risks";
 export type CachedComponent<T> = {
   data: T;
   listingId: string;
@@ -656,7 +661,7 @@ export async function recordProviderFailure(ticker: string, component: string, e
   const db = await getCacheDatabase();
   if (!db) return;
   const message = error instanceof Error ? error.message : "Provider refresh failed";
-  if (listingId && ["quote", "analyst_estimates", "comps"].includes(component)) {
+  if (listingId && ["quote", "analyst_estimates", "comps", "risks"].includes(component)) {
     await db.prepare(`UPDATE component_cache SET last_refresh_error=?, updated_at=? WHERE listing_id=? AND component=?`)
       .bind(message.slice(0, 500), new Date().toISOString(), listingId, component).run();
   }
@@ -672,6 +677,25 @@ export async function acquireRefreshLease(listingId: string, now = new Date()) {
       AND (refresh_started_at IS NULL OR refresh_started_at < ?)
   `).bind(now.toISOString(), now.toISOString(), listingId, leaseExpiredBefore).run();
   return (result.meta?.changes ?? 0) > 0;
+}
+
+export async function acquireCacheRefreshLease(cacheKey: string, leaseMs = REFRESH_LEASE_MS, now = new Date()) {
+  const db = await getCacheDatabase();
+  if (!db) return true;
+  const timestamp = now.toISOString();
+  const expiresAt = new Date(now.getTime() + leaseMs).toISOString();
+  const result = await db.prepare(`
+    INSERT INTO cache_refresh_leases (cache_key, acquired_at, expires_at) VALUES (?, ?, ?)
+    ON CONFLICT(cache_key) DO UPDATE SET acquired_at=excluded.acquired_at, expires_at=excluded.expires_at
+    WHERE cache_refresh_leases.expires_at < excluded.acquired_at
+  `).bind(cacheKey, timestamp, expiresAt).run();
+  return (result.meta?.changes ?? 0) > 0;
+}
+
+export async function releaseCacheRefreshLease(cacheKey: string) {
+  const db = await getCacheDatabase();
+  if (!db) return;
+  await db.prepare(`DELETE FROM cache_refresh_leases WHERE cache_key=?`).bind(cacheKey).run();
 }
 
 export async function recordRefreshFailure(listingId: string, error: unknown) {
@@ -726,6 +750,18 @@ export async function listDueRefreshTickers(limit = 5, excludeTicker?: string) {
     ORDER BY priority DESC, view_count DESC, last_viewed_at DESC LIMIT ?
   `).bind(new Date().toISOString(), (excludeTicker ?? "").toUpperCase(), limit).all<{ listing_id: string; ticker: string }>();
   return rows.results ?? [];
+}
+
+export async function listUncachedTickers(candidates: string[], limit = 2) {
+  const normalized = [...new Set(candidates.map((ticker) => ticker.trim().toUpperCase()).filter(Boolean))];
+  if (!normalized.length) return [];
+  const db = await getCacheDatabase();
+  if (!db) return normalized.slice(0, limit);
+  const placeholders = normalized.map(() => "?").join(",");
+  const rows = await db.prepare(`SELECT ticker FROM listings WHERE ticker COLLATE NOCASE IN (${placeholders})`)
+    .bind(...normalized).all<{ ticker: string }>();
+  const cached = new Set((rows.results ?? []).map((row) => row.ticker.toUpperCase()));
+  return normalized.filter((ticker) => !cached.has(ticker)).slice(0, Math.max(0, limit));
 }
 
 export async function markScheduledRefresh(listingId: string, success: boolean, now = new Date()) {

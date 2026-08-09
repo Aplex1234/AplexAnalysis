@@ -99,8 +99,11 @@ export type ComparableCompany = {
   selection_source_url: string;
 };
 
+export type AnalysisSection = "overview" | "financials" | "valuation" | "buyTarget" | "comps" | "earnings" | "filings" | "risks" | "research";
+
 export type Analysis = {
-  data_scope?: "overview" | "full";
+  data_scope?: "overview" | "partial" | "full";
+  loaded_sections?: AnalysisSection[];
   company: {
     ticker: string;
     name: string;

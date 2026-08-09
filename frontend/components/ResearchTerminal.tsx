@@ -28,16 +28,16 @@ import {
 } from "@carbon/icons-react";
 import type { ComponentType } from "react";
 
-import { fetchAnalysis, searchSecurities } from "@/lib/api";
+import { fetchAnalysis, prefetchAnalysis, searchSecurities } from "@/lib/api";
 import { compactMoney, money, multiple, percent, titleCase } from "@/lib/format";
-import type { Analysis, ComparableCompany, SecuritySearchResult } from "@/lib/types";
+import type { Analysis, AnalysisSection, ComparableCompany, SecuritySearchResult } from "@/lib/types";
 
 const FinancialChart = lazy(() => import("./FinancialChart").then((module) => ({ default: module.FinancialChart })));
 const FinancialExplorer = lazy(() => import("./FinancialExplorer").then((module) => ({ default: module.FinancialExplorer })));
 const MultipleValuationView = lazy(() => import("./MultipleValuationView").then((module) => ({ default: module.MultipleValuationView })));
 const StockPriceChart = lazy(() => import("./StockPriceChart").then((module) => ({ default: module.StockPriceChart })));
 
-type PageKey = "overview" | "financials" | "valuation" | "buyTarget" | "comps" | "earnings" | "filings" | "risks" | "research";
+type PageKey = AnalysisSection;
 
 const NAV_ITEMS: Array<{ key: PageKey; label: string; icon: ComponentType<{ size?: number }> }> = [
   { key: "overview", label: "Overview", icon: Dashboard },
@@ -53,6 +53,28 @@ const NAV_ITEMS: Array<{ key: PageKey; label: string; icon: ComponentType<{ size
 
 const RECENT_SEARCHES_KEY = "aplex-recent-securities";
 const RECENT_SEARCH_LIMIT = 5;
+
+function mergeAnalysisSection(current: Analysis, next: Analysis, section: AnalysisSection): Analysis {
+  if (next.data_scope === "full") return next;
+  const detailedFinancials = ["financials", "valuation", "buyTarget"].includes(section);
+  const loadedSections = new Set<AnalysisSection>([
+    ...(current.loaded_sections ?? ["overview"]),
+    ...(next.loaded_sections ?? [section]),
+  ]);
+  return {
+    ...current,
+    ...next,
+    data_scope: "partial",
+    loaded_sections: [...loadedSections],
+    financials: detailedFinancials ? next.financials : current.financials,
+    quarterly_financials: detailedFinancials ? next.quarterly_financials : current.quarterly_financials,
+    analyst_estimates: section === "earnings" ? next.analyst_estimates : current.analyst_estimates,
+    comps: section === "comps" ? next.comps : current.comps,
+    peer_selection: section === "comps" ? next.peer_selection : current.peer_selection,
+    filings: section === "filings" ? next.filings : current.filings,
+    risks: section === "risks" ? next.risks : current.risks,
+  };
+}
 
 export function ResearchTerminal({ initialAnalysis = null }: { initialAnalysis?: Analysis | null }) {
   const [tickerInput, setTickerInput] = useState("AAPL");
@@ -149,14 +171,19 @@ export function ResearchTerminal({ initialAnalysis = null }: { initialAnalysis?:
   }, [initialAnalysis, ticker, requestVersion, rememberSecurity]);
 
   useEffect(() => {
-    if (activePage === "overview" || analysis?.data_scope !== "overview" || analysis.company.ticker !== ticker) return;
+    if (activePage === "overview" || !analysis || analysis.company.ticker !== ticker) return;
+    const loadedSections = analysis.loaded_sections
+      ?? (analysis.data_scope === "overview" ? ["overview"] : NAV_ITEMS.map((item) => item.key));
+    if (loadedSections.includes(activePage)) return;
     const controller = new AbortController();
     let active = true;
     setDetailsLoading(true);
     setError(null);
-    fetchAnalysis(ticker, controller.signal, "full")
+    fetchAnalysis(ticker, controller.signal, activePage)
       .then((value) => {
-        if (active) setAnalysis({ ...value, data_scope: "full" });
+        if (active) setAnalysis((current) => current && current.company.ticker === ticker
+          ? mergeAnalysisSection(current, value, activePage)
+          : value);
       })
       .catch((requestError: Error) => {
         if (active && requestError.name !== "AbortError") setError(requestError.message);
@@ -212,6 +239,7 @@ export function ResearchTerminal({ initialAnalysis = null }: { initialAnalysis?:
   );
 
   function selectSecurity(result: SecuritySearchResult) {
+    prefetchAnalysis(result.ticker);
     rememberSecurity(result);
     setTickerInput(result.ticker);
     setTicker(result.ticker);
@@ -316,7 +344,10 @@ export function ResearchTerminal({ initialAnalysis = null }: { initialAnalysis?:
                       aria-selected={index === highlightedResult}
                       className={index === highlightedResult ? "is-highlighted" : ""}
                       onMouseDown={(event) => event.preventDefault()}
-                      onMouseEnter={() => setHighlightedResult(index)}
+                      onMouseEnter={() => {
+                        setHighlightedResult(index);
+                        prefetchAnalysis(result.ticker);
+                      }}
                       onClick={() => selectSecurity(result)}
                     >
                       <strong>{result.ticker}</strong>
@@ -338,7 +369,10 @@ export function ResearchTerminal({ initialAnalysis = null }: { initialAnalysis?:
                         aria-selected={optionIndex === highlightedResult}
                         className={optionIndex === highlightedResult ? "is-highlighted" : ""}
                         onMouseDown={(event) => event.preventDefault()}
-                        onMouseEnter={() => setHighlightedResult(optionIndex)}
+                        onMouseEnter={() => {
+                          setHighlightedResult(optionIndex);
+                          prefetchAnalysis(result.ticker);
+                        }}
                         onClick={() => selectSecurity(result)}
                       >
                         <strong>{result.ticker}</strong>

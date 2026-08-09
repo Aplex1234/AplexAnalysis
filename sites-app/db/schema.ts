@@ -135,6 +135,14 @@ export const cacheRefreshSchedule = sqliteTable("cache_refresh_schedule", {
   index("idx_cache_refresh_schedule_due").on(table.nextRefreshAt, table.priority, table.viewCount),
 ]);
 
+export const cacheRefreshLeases = sqliteTable("cache_refresh_leases", {
+  cacheKey: text("cache_key").primaryKey(),
+  acquiredAt: text("acquired_at").notNull(),
+  expiresAt: text("expires_at").notNull(),
+}, (table) => [
+  index("idx_cache_refresh_leases_expires_at").on(table.expiresAt),
+]);
+
 export const peerSelectionRuns = sqliteTable("peer_selection_runs", {
   id: text("id").primaryKey(),
   targetListingId: text("target_listing_id").notNull().references(() => listings.id, { onDelete: "cascade" }),

@@ -43,6 +43,13 @@
       "when": 1786314986840,
       "tag": "0005_wide_slyde",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1786318789569,
+      "tag": "0006_cultured_ares",
+      "breakpoints": true
     }
   ]
 }
