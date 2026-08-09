@@ -491,6 +491,22 @@ function OverviewView({ analysis }: { analysis: Analysis }) {
         </div>
       </section>
 
+      <section className="company-brief" aria-labelledby="company-brief-title">
+        <div className="company-brief-heading">
+          <Information size={18} aria-hidden="true" />
+          <div>
+            <h3 id="company-brief-title">What the company does</h3>
+            <span>{analysis.company.sector || "Public company"}</span>
+          </div>
+        </div>
+        <div className="company-brief-copy">
+          <p>{analysis.company.description || `${analysis.company.name} is a public company that reports financial information to the SEC.`}</p>
+          <a href={analysis.company.description_source_url} target="_blank" rel="noreferrer">
+            Source: {analysis.company.description_source}
+          </a>
+        </div>
+      </section>
+
       <section className="content-section">
         <SectionHeading title="Financial trajectory" detail="Annual SEC Company Facts, normalized to fiscal years" />
         <FinancialChart periods={analysis.financials} />

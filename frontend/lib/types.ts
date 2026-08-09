@@ -101,6 +101,8 @@ export type Analysis = {
     industry: string | null;
     exchange: string | null;
     description: string | null;
+    description_source: string;
+    description_source_url: string;
   };
   quote: {
     price: number;

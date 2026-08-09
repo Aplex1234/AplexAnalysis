@@ -7,6 +7,7 @@ import { buildFinancialExplorerData, FINANCIAL_GROUPS } from "../../frontend/lib
 import { normalizeCompanyFacts } from "../lib/server/sec-normalizer.ts";
 import { calculatePegProjection } from "../lib/server/peg.ts";
 import { extractRiskFactorHeadings } from "../lib/server/risk-factors.ts";
+import { summarizeCompanyDescription } from "../lib/server/company-description.ts";
 
 async function render() {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -37,6 +38,16 @@ test("keeps the desktop comps table inside its panel", async () => {
   const css = await readFile(new URL("../../frontend/app/premium.css", import.meta.url), "utf8");
   assert.doesNotMatch(css, /\.comps-table\s*\{[^}]*min-width:\s*1320px/s);
   assert.match(css, /\.comps-table\s*\{[^}]*width:\s*100%/s);
+});
+
+test("creates a concise, display-safe company summary", () => {
+  const source = "Example Corp. designs software for business customers. It also provides cloud services and support. A third sentence should not appear in the overview.";
+  assert.equal(
+    summarizeCompanyDescription(source),
+    "Example Corp. designs software for business customers. It also provides cloud services and support.",
+  );
+  assert.equal(summarizeCompanyDescription("A business &amp; services company — with a long dash."), "A business & services company - with a long dash.");
+  assert.equal(summarizeCompanyDescription("   "), null);
 });
 
 test("financial chart scales operating income to readable billions", () => {

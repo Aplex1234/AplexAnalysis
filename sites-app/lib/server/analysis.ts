@@ -1,6 +1,7 @@
 import { normalizeTicker, resolveSecurity } from "./security-master";
 import { extractRiskFactorHeadings } from "./risk-factors";
 import { calculatePegProjection } from "./peg";
+import { summarizeCompanyDescription } from "./company-description";
 import {
   normalizeCompanyFacts,
   type FinancialValues,
@@ -16,6 +17,8 @@ type CompanyProfile = {
   industry: string | null;
   exchange: string | null;
   description: string | null;
+  description_source: string;
+  description_source_url: string;
 };
 type Filing = {
   form: string;
@@ -157,6 +160,8 @@ const FALLBACK: Record<string, { profile: CompanyProfile; price: number; priceAs
       exchange: "NASDAQ",
       description:
         "Apple designs, manufactures and markets smartphones, computers, tablets, wearables and related services.",
+      description_source: "Bundled company profile",
+      description_source_url: "https://www.sec.gov/edgar/browse/?CIK=0000320193&owner=exclude",
     },
     price: 243.85,
     priceAsOf: "2025-01-02",
@@ -177,6 +182,8 @@ const FALLBACK: Record<string, { profile: CompanyProfile; price: number; priceAs
       exchange: "NASDAQ",
       description:
         "NVIDIA develops accelerated computing platforms for data center, gaming, visualization and automotive markets.",
+      description_source: "Bundled company profile",
+      description_source_url: "https://www.sec.gov/edgar/browse/?CIK=0001045810&owner=exclude",
     },
     price: 138.31,
     priceAsOf: "2025-01-02",
@@ -196,6 +203,8 @@ const FALLBACK: Record<string, { profile: CompanyProfile; price: number; priceAs
       industry: "Discount Stores",
       exchange: "NASDAQ",
       description: "Costco operates membership warehouses and e-commerce sites with limited-selection merchandise.",
+      description_source: "Bundled company profile",
+      description_source_url: "https://www.sec.gov/edgar/browse/?CIK=0000909832&owner=exclude",
     },
     price: 916,
     priceAsOf: "2025-01-02",
@@ -500,14 +509,35 @@ async function secData(ticker: string, includeRisks = true) {
   const filings = relevantFilings.slice(0, 20);
   const latestAnnualFiling = relevantFilings.find((filing: Filing) => ["10-K", "20-F", "40-F"].includes(filing.form));
   const filingRisks = includeRisks && latestAnnualFiling ? await fetchFilingRisks(latestAnnualFiling) : [];
+  const companyName = (nasdaqProfile?.name ?? submissions.name ?? identity.name).trim();
+  const nasdaqDescription = summarizeCompanyDescription(nasdaqProfile?.description ?? "");
+  const bundledDescription = summarizeCompanyDescription(FALLBACK[ticker]?.profile.description ?? "");
+  const secDescription = summarizeCompanyDescription(
+    submissions.sicDescription
+      ? `${companyName} is a public company operating in ${submissions.sicDescription}. It files financial statements and company disclosures with the SEC.`
+      : `${companyName} is a public company that files financial statements and company disclosures with the SEC.`,
+  );
+  const description = nasdaqDescription ?? bundledDescription ?? secDescription;
+  const descriptionSource = nasdaqDescription
+    ? "Nasdaq company profile"
+    : bundledDescription
+      ? FALLBACK[ticker].profile.description_source
+      : "SEC company submissions";
+  const descriptionSourceUrl = nasdaqDescription
+    ? `https://www.nasdaq.com/market-activity/stocks/${ticker.toLowerCase()}/company-profile`
+    : bundledDescription
+      ? FALLBACK[ticker].profile.description_source_url
+      : `https://www.sec.gov/edgar/browse/?CIK=${cik}&owner=exclude`;
   return {
     profile: {
       cik,
-      name: nasdaqProfile?.name ?? submissions.name ?? identity.name,
+      name: companyName,
       sector: nasdaqProfile?.sector ?? FALLBACK[ticker]?.profile.sector ?? null,
       industry: nasdaqProfile?.industry ?? FALLBACK[ticker]?.profile.industry ?? submissions.sicDescription ?? null,
       exchange: submissions.exchanges?.[0] ?? null,
-      description: nasdaqProfile?.description ?? FALLBACK[ticker]?.profile.description ?? null,
+      description,
+      description_source: descriptionSource,
+      description_source_url: descriptionSourceUrl,
     },
     periods,
     filings,

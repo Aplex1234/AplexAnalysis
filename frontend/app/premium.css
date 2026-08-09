@@ -187,6 +187,7 @@ body { background: #080c10; }
 .market-chart-section,
 .conviction-panel,
 .key-highlights,
+.company-brief,
 .content-section,
 .split-section > div,
 .split-section > form,
@@ -244,6 +245,31 @@ body { background: #080c10; }
 .key-highlights-grid .metric-cell:last-child { border-right: 0; }
 .key-highlights-grid .metric-cell > span { color: var(--aplex-muted); font-size: 10px; }
 .key-highlights-grid .metric-cell strong { color: var(--aplex-ink); font-size: 18px; }
+
+.company-brief {
+  display: grid;
+  grid-template-columns: minmax(190px, .48fr) minmax(0, 1.52fr);
+  min-height: 126px;
+  border: 1px solid var(--aplex-line);
+  border-radius: 14px;
+  background: var(--aplex-panel);
+  box-shadow: 0 14px 40px rgb(0 0 0 / 10%);
+}
+.company-brief-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 24px;
+  border-right: 1px solid var(--aplex-line);
+  background: var(--aplex-elevated);
+}
+.company-brief-heading > svg { flex: 0 0 auto; margin-top: 1px; color: var(--aplex-blue); }
+.company-brief-heading h3 { margin: 0 0 7px; color: var(--aplex-ink); font-size: 14px; }
+.company-brief-heading span { color: var(--aplex-muted); font-size: 10px; }
+.company-brief-copy { display: flex; flex-direction: column; justify-content: center; gap: 11px; min-width: 0; padding: 22px 26px; }
+.company-brief-copy p { max-width: 1040px; margin: 0; color: var(--aplex-ink); font-size: 13px; line-height: 1.65; }
+.company-brief-copy a { width: fit-content; color: var(--aplex-blue); font-size: 10px; text-decoration: none; }
+.company-brief-copy a:hover { text-decoration: underline; }
 
 .content-section { padding: 23px 24px 19px; }
 .section-heading h3 { color: var(--aplex-ink); }
@@ -480,6 +506,9 @@ body { background: #080c10; }
   .key-highlights-grid { grid-template-columns: 1fr; }
   .key-highlights-grid .metric-cell { min-height: 92px; border-right: 0; border-bottom: 1px solid var(--aplex-line); }
   .key-highlights-grid .metric-cell:last-child { border-bottom: 0; }
+  .company-brief { grid-template-columns: 1fr; }
+  .company-brief-heading { padding: 18px 17px; border-right: 0; border-bottom: 1px solid var(--aplex-line); }
+  .company-brief-copy { padding: 18px 17px 20px; }
   .split-section { grid-template-columns: 1fr; }
   .split-section > :first-child { border-right: 0; }
   .comps-overview-heading { grid-template-columns: 1fr 92px; }
