@@ -8,6 +8,7 @@ import { normalizeCompanyFacts, normalizeQuarterlyCompanyFacts } from "../lib/se
 import { calculatePegProjection } from "../lib/server/peg.ts";
 import { extractRiskFactorHeadings } from "../lib/server/risk-factors.ts";
 import { summarizeCompanyDescription } from "../lib/server/company-description.ts";
+import { parseCachedAnalysisRow } from "../lib/server/analysis-cache.ts";
 
 async function render() {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -68,6 +69,19 @@ test("does not prioritize promotional plans over the current business", () => {
   assert.match(summary, /makes electric vehicles/i);
   assert.match(summary, /sells batteries/i);
   assert.doesNotMatch(summary, /plans to|aircraft|boats/i);
+});
+
+test("validates cached analysis and reports its freshness", () => {
+  const row = {
+    listing_id: "listing:xnas:msft",
+    payload_json: JSON.stringify({ company: { ticker: "MSFT" }, financials: [] }),
+    generated_at: "2026-08-08T12:00:00.000Z",
+    fresh_until: "2026-08-08T12:15:00.000Z",
+  };
+
+  assert.equal(parseCachedAnalysisRow(row, Date.parse("2026-08-08T12:10:00.000Z"))?.isFresh, true);
+  assert.equal(parseCachedAnalysisRow(row, Date.parse("2026-08-08T12:20:00.000Z"))?.isFresh, false);
+  assert.equal(parseCachedAnalysisRow({ ...row, payload_json: "not-json" }), null);
 });
 
 test("financial chart scales operating income to readable billions", () => {
