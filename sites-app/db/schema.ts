@@ -80,6 +80,32 @@ export const componentCache = sqliteTable("component_cache", {
   index("idx_component_cache_component_fresh_until").on(table.component, table.freshUntil),
 ]);
 
+export const priceHistoryCache = sqliteTable("price_history_cache", {
+  ticker: text("ticker").notNull(),
+  range: text("range").notNull(),
+  payloadJson: text("payload_json").notNull(),
+  provider: text("provider").notNull(),
+  sourceVersion: text("source_version").notNull(),
+  fetchedAt: text("fetched_at").notNull(),
+  freshUntil: text("fresh_until").notNull(),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [
+  primaryKey({ columns: [table.ticker, table.range] }),
+  index("idx_price_history_cache_fresh_until").on(table.freshUntil),
+]);
+
+export const referenceDataCache = sqliteTable("reference_data_cache", {
+  cacheKey: text("cache_key").primaryKey(),
+  payloadJson: text("payload_json").notNull(),
+  provider: text("provider").notNull(),
+  sourceVersion: text("source_version").notNull(),
+  fetchedAt: text("fetched_at").notNull(),
+  freshUntil: text("fresh_until").notNull(),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [
+  index("idx_reference_data_cache_fresh_until").on(table.freshUntil),
+]);
+
 export const cacheEvents = sqliteTable("cache_events", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   listingId: text("listing_id"),

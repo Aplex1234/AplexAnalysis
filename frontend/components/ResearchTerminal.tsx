@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Button,
   InlineNotification,
@@ -31,10 +31,11 @@ import type { ComponentType } from "react";
 import { fetchAnalysis, searchSecurities } from "@/lib/api";
 import { compactMoney, money, multiple, percent, titleCase } from "@/lib/format";
 import type { Analysis, ComparableCompany, SecuritySearchResult } from "@/lib/types";
-import { FinancialChart } from "./FinancialChart";
-import { FinancialExplorer } from "./FinancialExplorer";
-import { MultipleValuationView } from "./MultipleValuationView";
-import { StockPriceChart } from "./StockPriceChart";
+
+const FinancialChart = lazy(() => import("./FinancialChart").then((module) => ({ default: module.FinancialChart })));
+const FinancialExplorer = lazy(() => import("./FinancialExplorer").then((module) => ({ default: module.FinancialExplorer })));
+const MultipleValuationView = lazy(() => import("./MultipleValuationView").then((module) => ({ default: module.MultipleValuationView })));
+const StockPriceChart = lazy(() => import("./StockPriceChart").then((module) => ({ default: module.StockPriceChart })));
 
 type PageKey = "overview" | "financials" | "valuation" | "buyTarget" | "comps" | "earnings" | "filings" | "risks" | "research";
 
@@ -53,12 +54,13 @@ const NAV_ITEMS: Array<{ key: PageKey; label: string; icon: ComponentType<{ size
 const RECENT_SEARCHES_KEY = "aplex-recent-securities";
 const RECENT_SEARCH_LIMIT = 5;
 
-export function ResearchTerminal() {
+export function ResearchTerminal({ initialAnalysis = null }: { initialAnalysis?: Analysis | null }) {
   const [tickerInput, setTickerInput] = useState("AAPL");
   const [ticker, setTicker] = useState("AAPL");
   const [activePage, setActivePage] = useState<PageKey>("overview");
-  const [analysis, setAnalysis] = useState<Analysis | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [analysis, setAnalysis] = useState<Analysis | null>(initialAnalysis);
+  const [loading, setLoading] = useState(!initialAnalysis);
+  const [detailsLoading, setDetailsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [requestVersion, setRequestVersion] = useState(0);
   const [searchResults, setSearchResults] = useState<SecuritySearchResult[]>([]);
@@ -111,9 +113,12 @@ export function ResearchTerminal() {
   useEffect(() => {
     const controller = new AbortController();
     let active = true;
-    setLoading(true);
+    const hasVisibleSnapshot = requestVersion === 0 && initialAnalysis?.company.ticker === ticker;
+    setLoading(!hasVisibleSnapshot);
+    setDetailsLoading(false);
+    if (!hasVisibleSnapshot) setAnalysis(null);
     setError(null);
-    fetchAnalysis(ticker, controller.signal)
+    fetchAnalysis(ticker, controller.signal, "overview")
       .then((value) => {
         if (active) {
           setAnalysis(value);
@@ -141,11 +146,33 @@ export function ResearchTerminal() {
       active = false;
       controller.abort();
     };
-  }, [ticker, requestVersion, rememberSecurity]);
+  }, [initialAnalysis, ticker, requestVersion, rememberSecurity]);
+
+  useEffect(() => {
+    if (activePage === "overview" || analysis?.data_scope !== "overview" || analysis.company.ticker !== ticker) return;
+    const controller = new AbortController();
+    let active = true;
+    setDetailsLoading(true);
+    setError(null);
+    fetchAnalysis(ticker, controller.signal, "full")
+      .then((value) => {
+        if (active) setAnalysis({ ...value, data_scope: "full" });
+      })
+      .catch((requestError: Error) => {
+        if (active && requestError.name !== "AbortError") setError(requestError.message);
+      })
+      .finally(() => {
+        if (active) setDetailsLoading(false);
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [activePage, analysis, ticker]);
 
   useEffect(() => {
     const query = tickerInput.trim();
-    if (!query) {
+    if (!searchOpen || !query || query.toUpperCase() === ticker) {
       setSearchResults([]);
       setSearching(false);
       return;
@@ -157,7 +184,6 @@ export function ResearchTerminal() {
       searchSecurities(query, controller.signal)
         .then((results) => {
           setSearchResults(results);
-          setSearchOpen(true);
           setHighlightedResult(results.length ? 0 : -1);
         })
         .catch((searchError: Error) => {
@@ -173,7 +199,7 @@ export function ResearchTerminal() {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [tickerInput]);
+  }, [searchOpen, ticker, tickerInput]);
 
   const uniqueRecentSearches = useMemo(() => {
     const resultTickers = new Set(searchResults.map((item) => item.ticker));
@@ -367,14 +393,15 @@ export function ResearchTerminal() {
 
       <main className="workspace">
         {loading && <LoadingState ticker={ticker} />}
-        {!loading && error && <ErrorState ticker={ticker} error={error} retry={() => setRequestVersion((value) => value + 1)} />}
+        {!loading && error && !analysis && <ErrorState ticker={ticker} error={error} retry={() => setRequestVersion((value) => value + 1)} />}
         {!loading && analysis && (
           <>
             <CompanyHeader analysis={analysis} />
             {analysis.provenance.warnings.map((warning) => (
               <InlineNotification key={warning} kind="warning" lowContrast title="Source status" subtitle={warning} hideCloseButton />
             ))}
-            <PageContent page={activePage} analysis={analysis} onSelectCompany={openCompanyProfile} />
+            {error && <InlineNotification kind="error" lowContrast title="Additional data unavailable" subtitle={error} hideCloseButton />}
+            <PageContent page={activePage} analysis={analysis} onSelectCompany={openCompanyProfile} detailsLoading={detailsLoading} />
           </>
         )}
       </main>
@@ -464,9 +491,12 @@ function CompanyHeader({ analysis }: { analysis: Analysis }) {
   );
 }
 
-function PageContent({ page, analysis, onSelectCompany }: { page: PageKey; analysis: Analysis; onSelectCompany: (ticker: string) => void }) {
+function PageContent({ page, analysis, onSelectCompany, detailsLoading }: { page: PageKey; analysis: Analysis; onSelectCompany: (ticker: string) => void; detailsLoading: boolean }) {
+  if (page !== "overview" && (detailsLoading || analysis.data_scope === "overview")) {
+    return <DeferredPanel label={`Loading ${page} data`} />;
+  }
   if (page === "financials") return <FinancialsView analysis={analysis} />;
-  if (page === "valuation") return <MultipleValuationView analysis={analysis} />;
+  if (page === "valuation") return <Suspense fallback={<DeferredPanel label="Loading valuation workspace" />}><MultipleValuationView analysis={analysis} /></Suspense>;
   if (page === "buyTarget") return <BuyTargetView analysis={analysis} />;
   if (page === "comps") return <CompsView analysis={analysis} onSelectCompany={onSelectCompany} />;
   if (page === "earnings") return <EarningsView analysis={analysis} />;
@@ -476,12 +506,18 @@ function PageContent({ page, analysis, onSelectCompany }: { page: PageKey; analy
   return <OverviewView analysis={analysis} />;
 }
 
+function DeferredPanel({ label }: { label: string }) {
+  return <div className="market-chart-loading deferred-panel" role="status" aria-live="polite" aria-label={label}><span /><span /><span /></div>;
+}
+
 function OverviewView({ analysis }: { analysis: Analysis }) {
   const headline = analysis.headline;
   return (
     <div className="page-stack">
       <section className="overview-primary-grid">
-        <StockPriceChart ticker={analysis.company.ticker} />
+        <Suspense fallback={<DeferredPanel label="Loading price history" />}>
+          <StockPriceChart ticker={analysis.company.ticker} />
+        </Suspense>
         <aside className="conviction-panel">
           <div className="conviction-heading">
             <div><span>APLEX SCORE</span><strong>{headline.score}<small>/100</small></strong></div>
@@ -534,7 +570,9 @@ function OverviewView({ analysis }: { analysis: Analysis }) {
 
       <section className="content-section">
         <SectionHeading title="Financial trajectory" detail="Annual SEC Company Facts, normalized to fiscal years" />
-        <FinancialChart periods={analysis.financials} />
+        <Suspense fallback={<DeferredPanel label="Loading financial chart" />}>
+          <FinancialChart periods={analysis.financials} />
+        </Suspense>
       </section>
 
       <section className="split-section">
@@ -604,7 +642,9 @@ function FinancialsView({ analysis }: { analysis: Analysis }) {
         </div>
       </section>
       <section className="financial-explorer-section">
-        <FinancialExplorer annualPeriods={analysis.financials} quarterlyPeriods={analysis.quarterly_financials} />
+        <Suspense fallback={<DeferredPanel label="Loading financial explorer" />}>
+          <FinancialExplorer annualPeriods={analysis.financials} quarterlyPeriods={analysis.quarterly_financials} />
+        </Suspense>
         <p className="table-note">Quarterly cash flow values are shown as stand-alone quarters. Q4 may be calculated as the fiscal-year total minus Q1, Q2 and Q3. Missing values are shown as N/A.</p>
       </section>
       <section className="analyst-estimates-section">

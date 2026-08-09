@@ -100,6 +100,7 @@ export type ComparableCompany = {
 };
 
 export type Analysis = {
+  data_scope?: "overview" | "full";
   company: {
     ticker: string;
     name: string;

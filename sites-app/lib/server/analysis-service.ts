@@ -19,7 +19,7 @@ import {
   markScheduledRefresh,
   readComponentCache,
   readFinancialSourceCache,
-  recordCompanyView,
+  recordCompanyViewInBackground,
   recordProviderFailure,
   writeAnalysisSnapshot,
   writeComponentCache,
@@ -166,6 +166,13 @@ async function loadPeers(
       financials.profile,
       quote?.market_cap ?? null,
       financials.filings,
+      async (peerTicker) => {
+        const peerFinancials = await loadFinancials(peerTicker);
+        if (!peerFinancials.data) throw new Error(`Financial data unavailable for ${peerTicker}`);
+        const peerQuote = await loadQuote(peerTicker, peerFinancials.data);
+        if (!peerQuote.data) throw new Error(`Quote unavailable for ${peerTicker}`);
+        return { financials: peerFinancials.data, quote: peerQuote.data };
+      },
     );
     const stored = await writeComponentCache(ticker, financials.profile, "comps", peerSet, COMPONENT_SOURCE_VERSIONS.comps, CACHE_TTLS.comps, "AplexAnalysis comps engine", refreshStartedAt);
     await writePeerSelectionAudit(ticker, financials.profile, peerSet);
@@ -239,6 +246,34 @@ export function markSnapshotFreshness(analysis: Analysis, status: "cached" | "re
   };
 }
 
+export function buildOverviewSnapshot(analysis: Analysis): Analysis {
+  return {
+    ...analysis,
+    data_scope: "overview",
+    financials: analysis.financials.map((period) => ({
+      ...period,
+      values: {
+        revenue: period.values.revenue,
+        operating_income: period.values.operating_income,
+        free_cash_flow: period.values.free_cash_flow,
+      },
+      provenance: {},
+    })),
+    quarterly_financials: [],
+    analyst_estimates: {
+      quarterly: [],
+      annual: [],
+      provider: analysis.analyst_estimates.provider,
+      as_of: analysis.analyst_estimates.as_of,
+      source_url: analysis.analyst_estimates.source_url,
+      disclosure: analysis.analyst_estimates.disclosure,
+    },
+    comps: [],
+    filings: [],
+    risks: [],
+  };
+}
+
 export async function rebuildAnalysisFromComponentCaches(
   rawTicker: string,
   requested?: Partial<DcfAssumptions>,
@@ -269,7 +304,7 @@ export async function rebuildAnalysisFromComponentCaches(
   });
   if (persistSnapshot) {
     const stored = await writeAnalysisSnapshot(enriched);
-    if (stored) await recordCompanyView(ticker, stored.listingId);
+    if (stored) await recordCompanyViewInBackground(ticker, stored.listingId);
   }
   return enriched;
 }

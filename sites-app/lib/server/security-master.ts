@@ -123,6 +123,7 @@ async function loadSecurityMaster(): Promise<SecuritySearchResult[]> {
         "User-Agent": process.env.SEC_USER_AGENT ?? "AplexAnalysis/0.1 research@aplexanalysis.app",
         Accept: "application/json",
       },
+      signal: AbortSignal.timeout(10_000),
     });
     if (!response.ok) throw new Error(`SEC security master returned ${response.status}`);
     const entries = parseSecurityMaster((await response.json()) as ExchangePayload);

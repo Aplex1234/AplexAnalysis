@@ -84,6 +84,19 @@ const CACHE_SCHEMA_SQL = [
     PRIMARY KEY (listing_id, component)
   )`,
   `CREATE INDEX IF NOT EXISTS idx_component_cache_component_fresh_until ON component_cache (component, fresh_until)`,
+  `CREATE TABLE IF NOT EXISTS price_history_cache (
+    ticker TEXT NOT NULL, range TEXT NOT NULL, payload_json TEXT NOT NULL,
+    provider TEXT NOT NULL, source_version TEXT NOT NULL, fetched_at TEXT NOT NULL,
+    fresh_until TEXT NOT NULL, updated_at TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    PRIMARY KEY (ticker, range)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_price_history_cache_fresh_until ON price_history_cache (fresh_until)`,
+  `CREATE TABLE IF NOT EXISTS reference_data_cache (
+    cache_key TEXT PRIMARY KEY NOT NULL, payload_json TEXT NOT NULL,
+    provider TEXT NOT NULL, source_version TEXT NOT NULL, fetched_at TEXT NOT NULL,
+    fresh_until TEXT NOT NULL, updated_at TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_reference_data_cache_fresh_until ON reference_data_cache (fresh_until)`,
   `CREATE TABLE IF NOT EXISTS cache_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT, listing_id TEXT, ticker TEXT NOT NULL,
     component TEXT NOT NULL, outcome TEXT NOT NULL, duration_ms INTEGER,
@@ -155,8 +168,10 @@ async function ensureLegacyColumns(db: D1Database) {
 export async function getCacheDatabase() {
   const db = (await workersRuntime())?.env?.DB ?? null;
   if (db && !schemaReady) {
-    await db.batch(CACHE_SCHEMA_SQL.map((statement) => db.prepare(statement)));
-    await ensureLegacyColumns(db);
+    if (process.env.NODE_ENV !== "production") {
+      await db.batch(CACHE_SCHEMA_SQL.map((statement) => db.prepare(statement)));
+      await ensureLegacyColumns(db);
+    }
     schemaReady = true;
   }
   return db;
@@ -229,7 +244,7 @@ async function recordEvent(
     error?: string | null;
   },
 ) {
-  await db.prepare(`
+  const task = db.prepare(`
     INSERT INTO cache_events (listing_id, ticker, component, outcome, duration_ms, json_bytes, provider, error)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(
@@ -242,6 +257,7 @@ async function recordEvent(
     event.provider ?? null,
     event.error?.slice(0, 500) ?? null,
   ).run();
+  if (!await scheduleBackgroundRefresh(task)) await task;
 }
 
 type CacheRow = {
@@ -687,6 +703,18 @@ export async function recordCompanyView(ticker: string, listingId: string, now =
       next_refresh_at=CASE WHEN next_refresh_at < excluded.next_refresh_at THEN next_refresh_at ELSE excluded.next_refresh_at END,
       updated_at=excluded.updated_at
   `).bind(listingId, ticker.toUpperCase(), timestamp, nextRefreshAt, timestamp).run();
+}
+
+export async function recordCompanyViewInBackground(ticker: string, listingId: string, now = new Date()) {
+  const task = recordCompanyView(ticker, listingId, now);
+  if (!await scheduleBackgroundRefresh(task)) await task;
+}
+
+export async function pruneCacheEvents(retentionDays = 30, now = new Date()) {
+  const db = await getCacheDatabase();
+  if (!db) return;
+  const cutoff = new Date(now.getTime() - Math.max(1, retentionDays) * 24 * 60 * 60 * 1000).toISOString();
+  await db.prepare(`DELETE FROM cache_events WHERE created_at < ?`).bind(cutoff).run();
 }
 
 export async function listDueRefreshTickers(limit = 5, excludeTicker?: string) {

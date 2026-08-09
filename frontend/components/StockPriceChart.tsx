@@ -29,29 +29,47 @@ const RANGE_LABELS: Array<{ key: ChartRange; label: string }> = [
   { key: "5y", label: "5Y" },
   { key: "max", label: "Max" },
 ];
+const readableDateFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+  timeZone: "UTC",
+});
+const compactNumberFormatter = new Intl.NumberFormat("en-US", {
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
 
 function readableDate(value: string): string {
-  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })
-    .format(new Date(`${value}T00:00:00Z`));
+  return readableDateFormatter.format(new Date(`${value}T00:00:00Z`));
 }
 
 export function StockPriceChart({ ticker }: { ticker: string }) {
-  const [history, setHistory] = useState<StockPriceHistory | null>(null);
+  const [histories, setHistories] = useState<Record<string, StockPriceHistory>>({});
   const [range, setRange] = useState<ChartRange>("1y");
   const [error, setError] = useState<string | null>(null);
   const sourceRange: SourceRange = range === "5y" || range === "max" ? range : "1y";
+  const historyKey = `${ticker}:${sourceRange}`;
+  const history = histories[historyKey] ?? null;
 
   useEffect(() => {
+    if (history) return;
     const controller = new AbortController();
-    setHistory(null);
     setError(null);
     fetchStockPriceHistory(ticker, sourceRange, controller.signal)
-      .then(setHistory)
+      .then((nextHistory) => {
+        setHistories((current) => {
+          const next = { ...current, [historyKey]: nextHistory };
+          const keys = Object.keys(next);
+          if (keys.length <= 12) return next;
+          return Object.fromEntries(keys.slice(-12).map((key) => [key, next[key]]));
+        });
+      })
       .catch((reason) => {
         if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "Price history failed.");
       });
     return () => controller.abort();
-  }, [ticker, sourceRange]);
+  }, [history, historyKey, sourceRange, ticker]);
 
   const points = useMemo(() => {
     if (!history?.points.length) return [];
@@ -71,7 +89,7 @@ export function StockPriceChart({ ticker }: { ticker: string }) {
   const high = points.length ? Math.max(...points.map((point) => point.high)) : null;
   const low = points.length ? Math.min(...points.map((point) => point.low)) : null;
   const positive = (absoluteChange ?? 0) >= 0;
-  const compactNumber = (value: number) => new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(value);
+  const compactNumber = (value: number) => compactNumberFormatter.format(value);
   const axisDate = (value: string) => range === "5y" || range === "max"
     ? new Date(`${value}T00:00:00Z`).getUTCFullYear().toString()
     : readableDate(value).replace(/, \d{4}/, "");

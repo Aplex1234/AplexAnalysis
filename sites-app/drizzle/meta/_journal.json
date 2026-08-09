@@ -29,6 +29,20 @@
       "when": 1786264269111,
       "tag": "0003_soft_deadpool",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1786314793263,
+      "tag": "0004_cheerful_spencer_smythe",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1786314986840,
+      "tag": "0005_wide_slyde",
+      "breakpoints": true
     }
   ]
 }

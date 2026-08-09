@@ -23,6 +23,8 @@ import {
   type NormalizedPeriod,
   type SecCompanyFacts,
 } from "./sec-normalizer.ts";
+import { scheduleBackgroundRefresh } from "./analysis-cache.ts";
+import { readReferenceCache, writeReferenceCache } from "./reference-cache.ts";
 
 type Values = FinancialValues;
 export type CompanyProfile = {
@@ -132,6 +134,10 @@ export type PeerSet = {
   candidates_considered: number;
   selection_version: string;
 };
+export type ComparableCompanyDataLoader = (ticker: string) => Promise<{
+  financials: FinancialSource;
+  quote: Quote;
+}>;
 
 export type AnalysisSources = {
   financials?: FinancialSource;
@@ -167,6 +173,8 @@ const DEFAULT_ASSUMPTIONS: Assumptions = {
 const RISK_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const COMPS_CACHE_TTL_MS = 15 * 60 * 1000;
 const NASDAQ_UNIVERSE_TTL_MS = 6 * 60 * 60 * 1000;
+const NASDAQ_PROFILE_SOURCE_VERSION = "nasdaq-profile-v1";
+const NASDAQ_UNIVERSE_SOURCE_VERSION = "nasdaq-universe-v1";
 const riskCache = new Map<string, { expiresAt: number; risks: CompanyRisk[] }>();
 const compsCache = new Map<string, { expiresAt: number; company: ComparableCompany }>();
 const profileCache = new Map<string, { expiresAt: number; profile: NasdaqProfile }>();
@@ -555,6 +563,7 @@ async function fetchFilingDocument(filing: Filing) {
       "User-Agent": process.env.SEC_USER_AGENT ?? "AplexAnalysis/0.1 research@aplexanalysis.app",
       Accept: "text/html,application/xhtml+xml",
     },
+    signal: AbortSignal.timeout(10_000),
   });
   if (!response.ok) throw new Error(`SEC filing request returned ${response.status}`);
   const html = await response.text();
@@ -607,10 +616,8 @@ function calculateBuyTarget(
   };
 }
 
-async function fetchNasdaqProfile(ticker: string): Promise<NasdaqProfile> {
+async function fetchNasdaqProfileLive(ticker: string): Promise<NasdaqProfile> {
   const normalizedTicker = ticker.toUpperCase();
-  const cached = profileCache.get(normalizedTicker);
-  if (cached && cached.expiresAt > Date.now()) return cached.profile;
   const response = await fetch(`https://api.nasdaq.com/api/company/${ticker.replaceAll("-", ".")}/company-profile`, {
     headers: {
       "User-Agent": "Mozilla/5.0 (compatible; AplexAnalysis/0.1; financial research)",
@@ -618,6 +625,7 @@ async function fetchNasdaqProfile(ticker: string): Promise<NasdaqProfile> {
       Origin: "https://www.nasdaq.com",
       Referer: "https://www.nasdaq.com/",
     },
+    signal: AbortSignal.timeout(8_000),
   });
   if (!response.ok) throw new Error(`Nasdaq profile request returned ${response.status}`);
   const payload = (await response.json()) as {
@@ -630,7 +638,36 @@ async function fetchNasdaqProfile(ticker: string): Promise<NasdaqProfile> {
     description: payload.data?.CompanyDescription?.value ?? null,
   };
   profileCache.set(normalizedTicker, { expiresAt: Date.now() + NASDAQ_UNIVERSE_TTL_MS, profile });
+  await writeReferenceCache(
+    `nasdaq-profile:${normalizedTicker}`,
+    profile,
+    NASDAQ_PROFILE_SOURCE_VERSION,
+    "Nasdaq company profile",
+    NASDAQ_UNIVERSE_TTL_MS,
+  );
   return profile;
+}
+
+async function fetchNasdaqProfile(ticker: string): Promise<NasdaqProfile> {
+  const normalizedTicker = ticker.toUpperCase();
+  const memoryCached = profileCache.get(normalizedTicker);
+  if (memoryCached && memoryCached.expiresAt > Date.now()) return memoryCached.profile;
+  const persisted = await readReferenceCache<NasdaqProfile>(
+    `nasdaq-profile:${normalizedTicker}`,
+    NASDAQ_PROFILE_SOURCE_VERSION,
+  );
+  if (persisted) {
+    profileCache.set(normalizedTicker, {
+      expiresAt: persisted.isFresh ? Date.parse(persisted.freshUntil) : Date.now() + COMPS_CACHE_TTL_MS,
+      profile: persisted.data,
+    });
+    if (!persisted.isFresh) {
+      const refresh = fetchNasdaqProfileLive(normalizedTicker).catch(() => persisted.data);
+      if (!await scheduleBackgroundRefresh(refresh)) refresh.catch(() => undefined);
+    }
+    return persisted.data;
+  }
+  return fetchNasdaqProfileLive(normalizedTicker);
 }
 
 function nullableNumber(value: unknown) {
@@ -646,6 +683,7 @@ export async function fetchAnalystEstimates(ticker: string): Promise<AnalystEsti
       Origin: "https://www.nasdaq.com",
       Referer: "https://www.nasdaq.com/",
     },
+    signal: AbortSignal.timeout(8_000),
   });
   if (!response.ok) throw new Error(`Nasdaq analyst forecast request returned ${response.status}`);
   const payload = (await response.json()) as {
@@ -682,7 +720,10 @@ export async function fetchFinancialFingerprint(rawTicker: string): Promise<Fina
     "User-Agent": process.env.SEC_USER_AGENT ?? "AplexAnalysis/0.1 research@aplexanalysis.app",
     Accept: "application/json",
   };
-  const response = await fetch(`https://data.sec.gov/submissions/CIK${identity.cik}.json`, { headers });
+  const response = await fetch(`https://data.sec.gov/submissions/CIK${identity.cik}.json`, {
+    headers,
+    signal: AbortSignal.timeout(10_000),
+  });
   if (!response.ok) throw new Error(`SEC submissions request returned ${response.status}`);
   const submissions = (await response.json()) as { filings?: { recent?: Record<string, string[]> } };
   const recent = submissions.filings?.recent ?? {};
@@ -703,8 +744,8 @@ export async function fetchFinancialSource(ticker: string, includeRisks = true):
   const identity = await resolveSecurity(ticker);
   const cik = identity.cik;
   const [factsResponse, submissionsResponse, nasdaqProfile] = await Promise.all([
-    fetch(`https://data.sec.gov/api/xbrl/companyfacts/CIK${cik}.json`, { headers }),
-    fetch(`https://data.sec.gov/submissions/CIK${cik}.json`, { headers }),
+    fetch(`https://data.sec.gov/api/xbrl/companyfacts/CIK${cik}.json`, { headers, signal: AbortSignal.timeout(12_000) }),
+    fetch(`https://data.sec.gov/submissions/CIK${cik}.json`, { headers, signal: AbortSignal.timeout(12_000) }),
     fetchNasdaqProfile(ticker).catch(() => null),
   ]);
   if (!factsResponse.ok || !submissionsResponse.ok) throw new Error("SEC company data was unavailable");
@@ -788,8 +829,7 @@ function issuerNameKey(name: string) {
     .trim();
 }
 
-async function fetchNasdaqStockUniverse() {
-  if (nasdaqUniverseCache && nasdaqUniverseCache.expiresAt > Date.now()) return nasdaqUniverseCache;
+async function fetchNasdaqStockUniverseLive() {
   const params = new URLSearchParams({ tableonly: "false", limit: "25", offset: "0", download: "true" });
   const response = await fetch(`https://api.nasdaq.com/api/screener/stocks?${params}`, {
     headers: {
@@ -798,6 +838,7 @@ async function fetchNasdaqStockUniverse() {
       Origin: "https://www.nasdaq.com",
       Referer: "https://www.nasdaq.com/",
     },
+    signal: AbortSignal.timeout(10_000),
   });
   if (!response.ok) throw new Error(`Nasdaq stock screener request returned ${response.status}`);
   const payload = (await response.json()) as {
@@ -809,7 +850,36 @@ async function fetchNasdaqStockUniverse() {
     expiresAt: Date.now() + NASDAQ_UNIVERSE_TTL_MS,
   };
   nasdaqUniverseCache = result;
+  await writeReferenceCache(
+    "nasdaq-stock-universe",
+    { rows: result.rows, asOf: result.asOf },
+    NASDAQ_UNIVERSE_SOURCE_VERSION,
+    "Nasdaq stock screener",
+    NASDAQ_UNIVERSE_TTL_MS,
+  );
   return result;
+}
+
+async function fetchNasdaqStockUniverse() {
+  if (nasdaqUniverseCache && nasdaqUniverseCache.expiresAt > Date.now()) return nasdaqUniverseCache;
+  const persisted = await readReferenceCache<{ rows: NasdaqScreenerRow[]; asOf: string }>(
+    "nasdaq-stock-universe",
+    NASDAQ_UNIVERSE_SOURCE_VERSION,
+  );
+  if (persisted) {
+    const result = {
+      rows: persisted.data.rows,
+      asOf: persisted.data.asOf,
+      expiresAt: persisted.isFresh ? Date.parse(persisted.freshUntil) : Date.now() + COMPS_CACHE_TTL_MS,
+    };
+    nasdaqUniverseCache = result;
+    if (!persisted.isFresh) {
+      const refresh = fetchNasdaqStockUniverseLive().catch(() => result);
+      if (!await scheduleBackgroundRefresh(refresh)) refresh.catch(() => undefined);
+    }
+    return result;
+  }
+  return fetchNasdaqStockUniverseLive();
 }
 
 async function findIndustryPeers(
@@ -876,7 +946,7 @@ async function findIndustryPeers(
   const initial = rankPeerCandidates(target, [...pool.values()]);
   const shortlistTickers = new Set([
     ...reviewed.map((peer) => peer.ticker),
-    ...initial.slice(0, 28).map((peer) => peer.ticker),
+    ...initial.slice(0, 12).map((peer) => peer.ticker),
   ]);
   const enriched = await Promise.all([...shortlistTickers].map(async (candidateTicker) => {
     const candidate = pool.get(candidateTicker)!;
@@ -918,11 +988,17 @@ function applyPeerSelection(company: ComparableCompany, candidate: RankedPeerCan
   };
 }
 
-async function buildComparableCompany(candidate: RankedPeerCandidate): Promise<ComparableCompany> {
+async function buildComparableCompany(
+  candidate: RankedPeerCandidate,
+  loadCompanyData?: ComparableCompanyDataLoader,
+): Promise<ComparableCompany> {
   const cached = compsCache.get(candidate.ticker);
   if (cached && cached.expiresAt > Date.now()) return applyPeerSelection(cached.company, candidate);
 
-  const [financials, quote] = await Promise.all([fetchFinancialSource(candidate.ticker, false), fetchQuote(candidate.ticker)]);
+  const { financials, quote } = loadCompanyData
+    ? await loadCompanyData(candidate.ticker)
+    : await Promise.all([fetchFinancialSource(candidate.ticker, false), fetchQuote(candidate.ticker)])
+      .then(([nextFinancials, nextQuote]) => ({ financials: nextFinancials, quote: nextQuote }));
   const metrics = calculateMetrics(financials.periods, quote.price, quote.market_cap);
   const company: ComparableCompany = {
     ticker: candidate.ticker,
@@ -958,12 +1034,15 @@ export async function fetchComparableCompanies(
   profile: CompanyProfile,
   marketCap: number | null,
   filings: Filing[] = [],
+  loadCompanyData?: ComparableCompanyDataLoader,
 ) {
   const candidateSet = await findIndustryPeers(ticker, profile, marketCap, filings);
   const reviewed = candidateSet.ranked.filter((candidate) => Boolean(candidate.reviewedReason));
   const ordered = [...reviewed, ...candidateSet.ranked.filter((candidate) => !candidate.reviewedReason)];
   const desiredCount = reviewed.length >= 3 ? Math.min(reviewed.length, 4) : 4;
-  const results = await Promise.allSettled(ordered.slice(0, 8).map(buildComparableCompany));
+  const results = await Promise.allSettled(
+    ordered.slice(0, 6).map((candidate) => buildComparableCompany(candidate, loadCompanyData)),
+  );
   const seenIssuers = new Set<string>();
   const companies = results
     .filter((result): result is PromiseFulfilledResult<ComparableCompany> => result.status === "fulfilled")
@@ -995,8 +1074,8 @@ export async function fetchQuote(ticker: string): Promise<Quote> {
     Referer: "https://www.nasdaq.com/",
   };
   const [response, summaryResponse] = await Promise.all([
-    fetch(`https://api.nasdaq.com/api/quote/${quoteTicker}/info?assetclass=stocks`, { headers }),
-    fetch(`https://api.nasdaq.com/api/quote/${quoteTicker}/summary?assetclass=stocks`, { headers }).catch(() => null),
+    fetch(`https://api.nasdaq.com/api/quote/${quoteTicker}/info?assetclass=stocks`, { headers, signal: AbortSignal.timeout(8_000) }),
+    fetch(`https://api.nasdaq.com/api/quote/${quoteTicker}/summary?assetclass=stocks`, { headers, signal: AbortSignal.timeout(8_000) }).catch(() => null),
   ]);
   if (!response.ok) throw new Error(`Nasdaq quote request returned ${response.status}`);
   const payload = (await response.json()) as {

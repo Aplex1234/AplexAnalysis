@@ -26,7 +26,7 @@
 html, body { margin: 0; min-height: 100%; background: var(--aplex-canvas); color: var(--aplex-ink); }
 
 body {
-  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  font-family: "Segoe UI", Arial, sans-serif;
   font-feature-settings: "tnum" 1, "ss01" 1;
 }
 
@@ -157,7 +157,7 @@ button, input { font: inherit; }
 .research-table .target-row th { box-shadow: inset 3px 0 0 var(--aplex-blue); }
 .table-note { margin: 0; padding: 14px 32px 24px; color: #6f6f6f; font-size: 11px; }
 .table-section > .cds--inline-notification { max-width: none; margin: 16px 32px 28px; }
-.mono { font-family: "IBM Plex Mono", monospace; }
+.mono { font-family: "Cascadia Mono", Consolas, monospace; }
 
 .valuation-summary { display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 1px solid #8d8d8d; }
 .valuation-summary > div { min-height: 116px; display: flex; flex-direction: column; justify-content: center; padding: 20px 32px; border-right: 1px solid #c6c6c6; }
@@ -205,7 +205,7 @@ button, input { font: inherit; }
 .research-empty p, .empty-state p { max-width: 640px; margin: 0; color: #525252; line-height: 1.55; }
 .research-empty > div { display: flex; flex-wrap: wrap; gap: 8px; margin: 26px 0; }
 .research-empty button { padding: 9px 12px; border: 1px solid #c6c6c6; background: #f4f4f4; color: #8d8d8d; }
-.research-empty code { padding: 9px 12px; background: #262626; color: #f4f4f4; font-family: "IBM Plex Mono", monospace; }
+.research-empty code { padding: 9px 12px; background: #262626; color: #f4f4f4; font-family: "Cascadia Mono", Consolas, monospace; }
 .research-empty small { margin-top: 12px; color: #6f6f6f; }
 
 .loading-state { padding: 40px 32px; }
@@ -789,7 +789,7 @@ button, input { font: inherit; }
 .estimate-table td { height: 42px; padding-inline: 11px; font-size: 10px; }
 .estimate-table th:first-child,
 .estimate-table td:first-child { padding-left: 18px; }
-.estimate-table tbody td { font-family: "IBM Plex Mono", monospace; }
+.estimate-table tbody td { font-family: "Cascadia Mono", Consolas, monospace; }
 .revision-up { color: var(--aplex-positive); }
 .revision-down { color: var(--aplex-negative); }
 .estimate-disclosure { margin: 0; padding: 13px 27px 17px; border-top: 1px solid var(--aplex-line); color: var(--aplex-muted); font-size: 10px; }

@@ -11,10 +11,10 @@ async function parseResponse(response: Response): Promise<Analysis> {
   return payload.data as Analysis;
 }
 
-export async function fetchAnalysis(ticker: string, signal?: AbortSignal): Promise<Analysis> {
-  const response = await fetch(`${API_URL}/companies/${encodeURIComponent(ticker)}/analysis`, {
+export async function fetchAnalysis(ticker: string, signal?: AbortSignal, scope: "overview" | "full" = "full"): Promise<Analysis> {
+  const query = scope === "overview" ? "?view=overview" : "";
+  const response = await fetch(`${API_URL}/companies/${encodeURIComponent(ticker)}/analysis${query}`, {
     signal,
-    cache: "no-store",
   });
   return parseResponse(response);
 }
@@ -43,7 +43,6 @@ export async function searchSecurities(query: string, signal?: AbortSignal): Pro
 export async function fetchStockPriceHistory(ticker: string, range: "1y" | "5y" | "max" = "1y", signal?: AbortSignal): Promise<StockPriceHistory> {
   const response = await fetch(`${API_URL}/companies/${encodeURIComponent(ticker)}/price-history?range=${range}`, {
     signal,
-    cache: "no-store",
   });
   const payload = await response.json();
   if (!response.ok) {

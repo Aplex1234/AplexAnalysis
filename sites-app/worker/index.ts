@@ -2,6 +2,7 @@
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
 import { refreshDueCompanies } from "../lib/server/analysis-service";
+import { pruneCacheEvents } from "../lib/server/analysis-cache";
 
 interface Env {
   ASSETS: {
@@ -42,10 +43,25 @@ const worker = {
       }, allowedWidths);
     }
 
-    return handler.fetch(request, env, ctx);
+    if (request.method === "GET" && url.pathname.startsWith("/_next/static/")) {
+      const response = await env.ASSETS.fetch(request);
+      if (response.ok) {
+        const headers = new Headers(response.headers);
+        headers.set("Cache-Control", "public, max-age=31536000, immutable");
+        return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+      }
+    }
+
+    const response = await handler.fetch(request, env, ctx);
+    if (request.method === "GET" && url.pathname === "/" && response.ok) {
+      const headers = new Headers(response.headers);
+      headers.set("Cache-Control", "public, max-age=0, s-maxage=60, stale-while-revalidate=300");
+      return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+    }
+    return response;
   },
   async scheduled(_controller: unknown, _env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(refreshDueCompanies(5));
+    ctx.waitUntil(Promise.all([refreshDueCompanies(5), pruneCacheEvents(30)]));
   },
 };
 

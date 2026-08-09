@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import test from "node:test";
 
 import { buildFinancialChartData, formatBillions } from "../../frontend/lib/chart.ts";
@@ -25,9 +25,23 @@ async function render() {
   );
 }
 
+test("keeps the initial terminal and stylesheet within performance budgets", async () => {
+  const chunkDirectory = new URL("../dist/client/_next/static/chunks/", import.meta.url);
+  const cssDirectory = new URL("../dist/client/_next/static/css/", import.meta.url);
+  const chunks = await readdir(chunkDirectory);
+  const stylesheets = await readdir(cssDirectory);
+  const terminalChunk = chunks.find((file) => file.startsWith("ResearchTerminal-") && file.endsWith(".js"));
+  assert.ok(terminalChunk, "ResearchTerminal chunk was not emitted");
+  const terminalSize = (await stat(new URL(terminalChunk, chunkDirectory))).size;
+  const cssSizes = await Promise.all(stylesheets.filter((file) => file.endsWith(".css")).map(async (file) => (await stat(new URL(file, cssDirectory))).size));
+  assert.ok(terminalSize < 100 * 1024, `ResearchTerminal exceeded 100 KB: ${terminalSize}`);
+  assert.ok(Math.max(...cssSizes) < 400 * 1024, `Stylesheet exceeded 400 KB: ${Math.max(...cssSizes)}`);
+});
+
 test("server-renders the AplexAnalysis terminal", async () => {
   const response = await render();
   assert.equal(response.status, 200);
+  assert.match(response.headers.get("cache-control") ?? "", /s-maxage=60/);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
@@ -609,6 +623,9 @@ test("serves a complete AAPL analysis through the hosted API", async () => {
   );
 
   assert.equal(response.status, 200);
+  assert.match(response.headers.get("cache-control") ?? "", /s-maxage=300/);
+  assert.match(response.headers.get("server-timing") ?? "", /app;dur=/);
+  assert.ok(response.headers.get("etag"));
   const payload = await response.json();
   assert.equal(payload.data.company.ticker, "AAPL");
   assert.ok(payload.data.financials.length >= 5);
@@ -622,4 +639,18 @@ test("serves a complete AAPL analysis through the hosted API", async () => {
   assert.ok(Number.isFinite(payload.data.valuation.growth_projection.peg_ratio));
   assert.ok(payload.data.headline.buy_target < payload.data.headline.fair_value);
   assert.equal(payload.data.score.overall >= 0 && payload.data.score.overall <= 100, true);
+
+  const overviewResponse = await worker.fetch(
+    new Request("http://localhost/api/v1/companies/AAPL/analysis?view=overview"),
+    { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
+    { waitUntil() {}, passThroughOnException() {} },
+  );
+  assert.equal(overviewResponse.status, 200);
+  const overviewPayload = await overviewResponse.json();
+  assert.equal(overviewPayload.data.data_scope, "overview");
+  assert.deepEqual(overviewPayload.data.quarterly_financials, []);
+  assert.deepEqual(overviewPayload.data.comps, []);
+  assert.deepEqual(overviewPayload.data.filings, []);
+  assert.deepEqual(overviewPayload.data.risks, []);
+  assert.ok(JSON.stringify(overviewPayload.data).length < JSON.stringify(payload.data).length * 0.5);
 });

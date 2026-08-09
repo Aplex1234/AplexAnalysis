@@ -1,4 +1,5 @@
 import { normalizeTicker } from "./security-master";
+import { getCacheDatabase, scheduleBackgroundRefresh } from "./analysis-cache.ts";
 
 export type StockPricePoint = {
   date: string;
@@ -21,8 +22,21 @@ export type StockPriceHistory = {
 
 export type PriceHistoryRange = "1y" | "5y" | "max";
 
-const CACHE_TTL_MS = 15 * 60 * 1000;
+const PRICE_HISTORY_SOURCE_VERSION = "price-history-v2";
+const MEMORY_CACHE_TTL_MS = 15 * 60 * 1000;
+const PERSISTENT_CACHE_TTLS: Record<PriceHistoryRange, number> = {
+  "1y": 60 * 60 * 1000,
+  "5y": 6 * 60 * 60 * 1000,
+  max: 12 * 60 * 60 * 1000,
+};
 const priceHistoryCache = new Map<string, { expiresAt: number; data: StockPriceHistory }>();
+const priceHistoryRefreshes = new Map<string, Promise<StockPriceHistory>>();
+
+type PriceHistoryCacheRow = {
+  payload_json: string;
+  source_version: string;
+  fresh_until: string;
+};
 
 function isoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -55,8 +69,72 @@ function buildHistory(
     source_url: sourceUrl,
     is_delayed: true,
   };
-  priceHistoryCache.set(`${ticker}:${range}`, { expiresAt: Date.now() + CACHE_TTL_MS, data });
   return data;
+}
+
+async function readPersistentHistory(ticker: string, range: PriceHistoryRange) {
+  const db = await getCacheDatabase();
+  if (!db) return null;
+  const row = await db.prepare(`
+    SELECT payload_json, source_version, fresh_until FROM price_history_cache
+    WHERE ticker = ? COLLATE NOCASE AND range = ? LIMIT 1
+  `).bind(ticker, range).first<PriceHistoryCacheRow>();
+  if (!row || row.source_version !== PRICE_HISTORY_SOURCE_VERSION) return null;
+  try {
+    return {
+      data: JSON.parse(row.payload_json) as StockPriceHistory,
+      isFresh: Date.parse(row.fresh_until) > Date.now(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function writePersistentHistory(data: StockPriceHistory) {
+  const db = await getCacheDatabase();
+  if (!db) return;
+  const now = new Date();
+  const freshUntil = new Date(now.getTime() + PERSISTENT_CACHE_TTLS[data.range]).toISOString();
+  await db.prepare(`
+    INSERT INTO price_history_cache (
+      ticker, range, payload_json, provider, source_version, fetched_at, fresh_until, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(ticker, range) DO UPDATE SET
+      payload_json=excluded.payload_json, provider=excluded.provider,
+      source_version=excluded.source_version, fetched_at=excluded.fetched_at,
+      fresh_until=excluded.fresh_until, updated_at=excluded.updated_at
+  `).bind(
+    data.ticker,
+    data.range,
+    JSON.stringify(data),
+    data.provider,
+    PRICE_HISTORY_SOURCE_VERSION,
+    now.toISOString(),
+    freshUntil,
+    now.toISOString(),
+  ).run();
+}
+
+function rememberHistory(data: StockPriceHistory) {
+  priceHistoryCache.set(`${data.ticker}:${data.range}`, {
+    expiresAt: Date.now() + MEMORY_CACHE_TTL_MS,
+    data,
+  });
+}
+
+function refreshHistory(ticker: string, range: PriceHistoryRange) {
+  const key = `${ticker}:${range}`;
+  const current = priceHistoryRefreshes.get(key);
+  if (current) return current;
+  const refresh = (range === "1y" ? getNasdaqHistory(ticker) : getYahooHistory(ticker, range))
+    .then(async (data) => {
+      rememberHistory(data);
+      await writePersistentHistory(data);
+      return data;
+    })
+    .finally(() => priceHistoryRefreshes.delete(key));
+  priceHistoryRefreshes.set(key, refresh);
+  return refresh;
 }
 
 async function getNasdaqHistory(ticker: string): Promise<StockPriceHistory> {
@@ -78,6 +156,7 @@ async function getNasdaqHistory(ticker: string): Promise<StockPriceHistory> {
       Origin: "https://www.nasdaq.com",
       Referer: "https://www.nasdaq.com/",
     },
+    signal: AbortSignal.timeout(10_000),
   });
   if (!response.ok) throw new Error(`Nasdaq price-history request returned ${response.status}`);
 
@@ -120,6 +199,7 @@ async function getYahooHistory(ticker: string, range: "5y" | "max"): Promise<Sto
       "User-Agent": "Mozilla/5.0 (compatible; AplexAnalysis/0.1; financial research)",
       Accept: "application/json, text/plain, */*",
     },
+    signal: AbortSignal.timeout(10_000),
   });
   if (!response.ok) throw new Error(`Yahoo Finance price-history request returned ${response.status}`);
   const payload = (await response.json()) as {
@@ -172,5 +252,14 @@ export async function getStockPriceHistory(rawTicker: string, requestedRange: Pr
   const range: PriceHistoryRange = requestedRange === "5y" || requestedRange === "max" ? requestedRange : "1y";
   const cached = priceHistoryCache.get(`${ticker}:${range}`);
   if (cached && cached.expiresAt > Date.now()) return cached.data;
-  return range === "1y" ? getNasdaqHistory(ticker) : getYahooHistory(ticker, range);
+  const persisted = await readPersistentHistory(ticker, range);
+  if (persisted) {
+    rememberHistory(persisted.data);
+    if (!persisted.isFresh) {
+      const task = refreshHistory(ticker, range);
+      if (!await scheduleBackgroundRefresh(task)) task.catch(() => undefined);
+    }
+    return persisted.data;
+  }
+  return refreshHistory(ticker, range);
 }
