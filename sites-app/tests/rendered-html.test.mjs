@@ -65,6 +65,13 @@ test("makes comparable company profiles directly navigable", async () => {
   assert.match(component, /aria-label=\{`Open \$\{peer\.name\} profile`\}/);
 });
 
+test("keeps restored startup focus from opening the security search menu", async () => {
+  const component = await readFile(new URL("../../frontend/components/ResearchTerminal.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(component, /onFocus=\{\(\) => \{\s*setSearchOpen\(true\)/);
+  assert.match(component, /onPointerDown=\{\(\) => \{\s*setSearchOpen\(true\)/);
+  assert.match(component, /onChange=\{\(event\) => \{[\s\S]*?setSearchOpen\(true\)/);
+});
+
 test("creates a concise, display-safe company summary", () => {
   const source = "Example Corp. designs software for business customers. It also provides cloud services and support. A third sentence should not appear in the overview.";
   assert.equal(

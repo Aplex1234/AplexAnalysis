@@ -277,7 +277,7 @@ export function ResearchTerminal({ initialAnalysis = null }: { initialAnalysis?:
                 aria-expanded={searchOpen}
                 aria-activedescendant={highlightedResult >= 0 ? `security-result-${highlightedResult}` : undefined}
                 autoComplete="off"
-                onFocus={() => {
+                onPointerDown={() => {
                   setSearchOpen(true);
                   setHighlightedResult(searchOptions.length ? 0 : -1);
                 }}
@@ -285,6 +285,7 @@ export function ResearchTerminal({ initialAnalysis = null }: { initialAnalysis?:
                 onChange={(event) => {
                   setTickerInput(event.target.value);
                   setSearchResults([]);
+                  setSearchOpen(true);
                   setHighlightedResult(-1);
                 }}
                 onKeyDown={(event) => {
