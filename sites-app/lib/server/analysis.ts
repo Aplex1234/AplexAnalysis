@@ -40,6 +40,7 @@ type FinancialSource = {
 };
 type Quote = {
   price: number;
+  market_cap: number | null;
   as_of: string;
   currency: string;
   provider: string;
@@ -47,6 +48,31 @@ type Quote = {
   is_delayed: boolean;
 };
 type Period = NormalizedPeriod;
+type ComparableCompany = {
+  ticker: string;
+  name: string;
+  sector: string | null;
+  industry: string | null;
+  price: number;
+  market_cap: number | null;
+  revenue_growth: number | null;
+  net_income_growth: number | null;
+  operating_margin: number | null;
+  fcf_margin: number | null;
+  roic: number | null;
+  pe: number | null;
+  price_to_book: number | null;
+  price_fcf: number | null;
+  fcf_yield: number | null;
+  fiscal_year: number;
+  quote_as_of: string;
+};
+type NasdaqProfile = {
+  name: string | null;
+  sector: string | null;
+  industry: string | null;
+  description: string | null;
+};
 
 export type Assumptions = {
   forecast_years: number;
@@ -65,7 +91,9 @@ const DEFAULT_ASSUMPTIONS: Assumptions = {
   terminal_growth: 0.025,
 };
 const RISK_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const COMPS_CACHE_TTL_MS = 15 * 60 * 1000;
 const riskCache = new Map<string, { expiresAt: number; risks: CompanyRisk[] }>();
+const compsCache = new Map<string, { expiresAt: number; company: ComparableCompany }>();
 
 function period(
   fiscalYear: number,
@@ -181,22 +209,22 @@ const FALLBACK: Record<string, { profile: CompanyProfile; price: number; priceAs
   },
 };
 
-const PEERS: Record<string, Array<Record<string, number | string>>> = {
-  AAPL: [
-    { ticker: "MSFT", revenue_growth: 0.16, ebitda_margin: 0.53, fcf_margin: 0.34, roic: 0.27, pe: 35, ev_revenue: 12, ev_ebitda: 23, price_fcf: 37 },
-    { ticker: "GOOGL", revenue_growth: 0.14, ebitda_margin: 0.36, fcf_margin: 0.25, roic: 0.24, pe: 24, ev_revenue: 6.5, ev_ebitda: 18, price_fcf: 26 },
-    { ticker: "DELL", revenue_growth: 0.09, ebitda_margin: 0.1, fcf_margin: 0.05, roic: 0.31, pe: 20, ev_revenue: 1, ev_ebitda: 10, price_fcf: 22 },
-  ],
-  NVDA: [
-    { ticker: "AMD", revenue_growth: 0.24, ebitda_margin: 0.25, fcf_margin: 0.14, roic: 0.08, pe: 47, ev_revenue: 10, ev_ebitda: 39, price_fcf: 58 },
-    { ticker: "AVGO", revenue_growth: 0.44, ebitda_margin: 0.59, fcf_margin: 0.41, roic: 0.18, pe: 36, ev_revenue: 19, ev_ebitda: 31, price_fcf: 39 },
-    { ticker: "QCOM", revenue_growth: 0.11, ebitda_margin: 0.35, fcf_margin: 0.29, roic: 0.22, pe: 18, ev_revenue: 5, ev_ebitda: 14, price_fcf: 20 },
-  ],
-  COST: [
-    { ticker: "WMT", revenue_growth: 0.06, ebitda_margin: 0.07, fcf_margin: 0.02, roic: 0.14, pe: 35, ev_revenue: 1.2, ev_ebitda: 17, price_fcf: 41 },
-    { ticker: "TGT", revenue_growth: -0.01, ebitda_margin: 0.08, fcf_margin: 0.04, roic: 0.17, pe: 14, ev_revenue: 0.8, ev_ebitda: 9, price_fcf: 15 },
-    { ticker: "KR", revenue_growth: 0.01, ebitda_margin: 0.05, fcf_margin: 0.02, roic: 0.13, pe: 14, ev_revenue: 0.4, ev_ebitda: 7, price_fcf: 13 },
-  ],
+const CURATED_PEER_TICKERS: Record<string, string[]> = {
+  AAPL: ["MSFT", "DELL", "HPQ"],
+  AMZN: ["WMT", "COST", "EBAY"],
+  COST: ["WMT", "TGT", "BJ"],
+  GOOGL: ["META", "MSFT", "AMZN"],
+  JPM: ["BAC", "WFC", "C"],
+  KO: ["PEP", "KDP", "MNST"],
+  MA: ["V", "AXP", "PYPL"],
+  MCD: ["YUM", "SBUX", "QSR"],
+  META: ["GOOGL", "SNAP", "PINS"],
+  MSFT: ["ORCL", "GOOGL", "CRM"],
+  NFLX: ["DIS", "WBD", "PARA"],
+  NVDA: ["AMD", "AVGO", "QCOM"],
+  PEP: ["KO", "KDP", "MNST"],
+  TSLA: ["GM", "F", "RIVN"],
+  V: ["MA", "AXP", "PYPL"],
 };
 
 const clamp = (value: number, low: number, high: number) => Math.max(low, Math.min(high, value));
@@ -207,7 +235,7 @@ const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floo
 const cagr = (start?: number, end?: number, years = 1) =>
   start && end && start > 0 && end > 0 ? (end / start) ** (1 / years) - 1 : null;
 
-function calculateMetrics(periods: Period[], price: number) {
+function calculateMetrics(periods: Period[], price: number, quotedMarketCap?: number | null) {
   const latest = periods.at(-1)!.values;
   const prior = periods.at(-2)?.values ?? {};
   const series = (key: string) => periods.map((item) => item.values[key]).filter((value): value is number => value != null);
@@ -222,7 +250,7 @@ function calculateMetrics(periods: Period[], price: number) {
     margins.reduce((sum, value) => sum + (value - averageMargin) ** 2, 0) / Math.max(margins.length, 1),
   );
   const shares = latest.shares_outstanding ?? latest.diluted_shares;
-  const marketCap = shares ? shares * price : undefined;
+  const marketCap = quotedMarketCap && quotedMarketCap > 0 ? quotedMarketCap : shares ? shares * price : undefined;
   const debt = latest.total_debt ?? latest.long_term_debt ?? 0;
   const liquidAssets = latest.cash_and_investments ?? latest.cash ?? 0;
   const netDebt = latest.net_debt ?? debt - liquidAssets;
@@ -248,7 +276,9 @@ function calculateMetrics(periods: Period[], price: number) {
     share_change: (divide(latest.diluted_shares, prior.diluted_shares) ?? 1) - 1,
     buyback_yield: divide(latest.share_repurchases, marketCap),
     market_cap: marketCap ?? null,
-    pe: divide(price, eps ?? undefined),
+    pe: latest.net_income != null && latest.net_income > 0
+      ? divide(marketCap, latest.net_income) ?? divide(price, eps ?? undefined)
+      : null,
     price_to_book: latest.equity != null && latest.equity > 0 ? divide(marketCap, latest.equity) : null,
     price_to_fcf: divide(marketCap, latest.free_cash_flow),
     fcf_yield: divide(latest.free_cash_flow, marketCap),
@@ -300,7 +330,7 @@ function calculateValuation(
   metrics: ReturnType<typeof calculateMetrics>,
   price: number,
   assumptions: Assumptions,
-  peers: Array<Record<string, number | string>>,
+  peers: ComparableCompany[],
 ) {
   const latest = periods.at(-1)!.values;
   const growth = assumptions.revenue_growth ?? clamp(metrics.revenue_cagr ?? 0.05, 0.02, 0.25);
@@ -311,7 +341,10 @@ function calculateValuation(
   const eps = divide(latest.net_income, latest.diluted_shares) ?? 0;
   const targetPe = clamp(18 + growth * 55 + (metrics.roic ?? 0) * 18, 12, 42);
   const growthValue = eps * targetPe;
-  const comparable = eps * (peers.length ? median(peers.map((peer) => Number(peer.pe))) : targetPe);
+  const peerMultiples = peers
+    .map((peer) => peer.pe)
+    .filter((value): value is number => value != null && Number.isFinite(value) && value > 0);
+  const comparable = eps * (peerMultiples.length ? median(peerMultiples) : targetPe);
   const normalized = eps * clamp(targetPe * 0.92, 12, 38);
   const fairValue = pureDcf * 0.55 + comparable * 0.2 + growthValue * 0.15 + normalized * 0.1;
   const impliedGrowth = reverseDcf(periods, price, margin, assumptions);
@@ -411,16 +444,38 @@ function calculateBuyTarget(
   };
 }
 
-async function secData(ticker: string) {
+async function fetchNasdaqProfile(ticker: string): Promise<NasdaqProfile> {
+  const response = await fetch(`https://api.nasdaq.com/api/company/${ticker.replaceAll("-", ".")}/company-profile`, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (compatible; AplexAnalysis/0.1; financial research)",
+      Accept: "application/json, text/plain, */*",
+      Origin: "https://www.nasdaq.com",
+      Referer: "https://www.nasdaq.com/",
+    },
+  });
+  if (!response.ok) throw new Error(`Nasdaq profile request returned ${response.status}`);
+  const payload = (await response.json()) as {
+    data?: Record<string, { value?: string | null }>;
+  };
+  return {
+    name: payload.data?.CompanyName?.value ?? null,
+    sector: payload.data?.Sector?.value ?? null,
+    industry: payload.data?.Industry?.value ?? null,
+    description: payload.data?.CompanyDescription?.value ?? null,
+  };
+}
+
+async function secData(ticker: string, includeRisks = true) {
   const headers = {
     "User-Agent": process.env.SEC_USER_AGENT ?? "AplexAnalysis/0.1 research@aplexanalysis.app",
     Accept: "application/json",
   };
   const identity = await resolveSecurity(ticker);
   const cik = identity.cik;
-  const [factsResponse, submissionsResponse] = await Promise.all([
+  const [factsResponse, submissionsResponse, nasdaqProfile] = await Promise.all([
     fetch(`https://data.sec.gov/api/xbrl/companyfacts/CIK${cik}.json`, { headers }),
     fetch(`https://data.sec.gov/submissions/CIK${cik}.json`, { headers }),
+    fetchNasdaqProfile(ticker).catch(() => null),
   ]);
   if (!factsResponse.ok || !submissionsResponse.ok) throw new Error("SEC company data was unavailable");
   const facts = (await factsResponse.json()) as SecCompanyFacts;
@@ -444,15 +499,15 @@ async function secData(ticker: string) {
     .filter((item: Filing) => ["10-K", "10-Q", "8-K", "20-F", "40-F", "6-K"].includes(item.form));
   const filings = relevantFilings.slice(0, 20);
   const latestAnnualFiling = relevantFilings.find((filing: Filing) => ["10-K", "20-F", "40-F"].includes(filing.form));
-  const filingRisks = latestAnnualFiling ? await fetchFilingRisks(latestAnnualFiling) : [];
+  const filingRisks = includeRisks && latestAnnualFiling ? await fetchFilingRisks(latestAnnualFiling) : [];
   return {
     profile: {
       cik,
-      name: submissions.name ?? identity.name,
-      sector: FALLBACK[ticker]?.profile.sector ?? null,
-      industry: FALLBACK[ticker]?.profile.industry ?? submissions.sicDescription ?? null,
+      name: nasdaqProfile?.name ?? submissions.name ?? identity.name,
+      sector: nasdaqProfile?.sector ?? FALLBACK[ticker]?.profile.sector ?? null,
+      industry: nasdaqProfile?.industry ?? FALLBACK[ticker]?.profile.industry ?? submissions.sicDescription ?? null,
       exchange: submissions.exchanges?.[0] ?? null,
-      description: FALLBACK[ticker]?.profile.description ?? null,
+      description: nasdaqProfile?.description ?? FALLBACK[ticker]?.profile.description ?? null,
     },
     periods,
     filings,
@@ -460,9 +515,23 @@ async function secData(ticker: string) {
   };
 }
 
-async function quoteData(ticker: string) {
-  const quoteTicker = ticker.replaceAll("-", ".");
-  const response = await fetch(`https://api.nasdaq.com/api/quote/${quoteTicker}/info?assetclass=stocks`, {
+function cleanedCompanyName(name: string) {
+  return name
+    .replace(/\b(class [a-z]|common stock|ordinary shares?|american depositary shares?)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+async function findSectorPeers(
+  ticker: string,
+  companyName: string,
+  sector: string | null,
+  marketCap: number | null,
+) {
+  if (!sector) return [];
+  const params = new URLSearchParams({ tableonly: "true", limit: "1200", offset: "0", sector });
+  const response = await fetch(`https://api.nasdaq.com/api/screener/stocks?${params}`, {
     headers: {
       "User-Agent": "Mozilla/5.0 (compatible; AplexAnalysis/0.1; financial research)",
       Accept: "application/json, text/plain, */*",
@@ -470,6 +539,94 @@ async function quoteData(ticker: string) {
       Referer: "https://www.nasdaq.com/",
     },
   });
+  if (!response.ok) return [];
+  const payload = (await response.json()) as {
+    data?: { table?: { rows?: Array<{ symbol?: string; name?: string; marketCap?: string }> } };
+  };
+  const targetName = cleanedCompanyName(companyName);
+  return (payload.data?.table?.rows ?? [])
+    .map((row) => ({
+      ticker: String(row.symbol ?? "").toUpperCase(),
+      name: String(row.name ?? ""),
+      marketCap: Number(String(row.marketCap ?? "").replaceAll(",", "")),
+    }))
+    .filter((row) =>
+      row.ticker !== ticker
+      && /^[A-Z][A-Z0-9.-]{0,9}$/.test(row.ticker)
+      && Number.isFinite(row.marketCap)
+      && row.marketCap > 0
+      && cleanedCompanyName(row.name) !== targetName,
+    )
+    .sort((a, b) => {
+      if (!marketCap || marketCap <= 0) return b.marketCap - a.marketCap;
+      return Math.abs(Math.log(a.marketCap / marketCap)) - Math.abs(Math.log(b.marketCap / marketCap));
+    })
+    .slice(0, 8)
+    .map((row) => row.ticker);
+}
+
+async function buildComparableCompany(ticker: string): Promise<ComparableCompany> {
+  const cached = compsCache.get(ticker);
+  if (cached && cached.expiresAt > Date.now()) return cached.company;
+
+  const [financials, quote] = await Promise.all([secData(ticker, false), quoteData(ticker)]);
+  const metrics = calculateMetrics(financials.periods, quote.price, quote.market_cap);
+  const company: ComparableCompany = {
+    ticker,
+    name: financials.profile.name,
+    sector: financials.profile.sector,
+    industry: financials.profile.industry,
+    price: quote.price,
+    market_cap: metrics.market_cap,
+    revenue_growth: metrics.revenue_growth_yoy,
+    net_income_growth: metrics.net_income_growth_yoy,
+    operating_margin: metrics.operating_margin,
+    fcf_margin: metrics.fcf_margin,
+    roic: metrics.roic,
+    pe: metrics.pe,
+    price_to_book: metrics.price_to_book,
+    price_fcf: metrics.price_to_fcf,
+    fcf_yield: metrics.fcf_yield,
+    fiscal_year: financials.periods.at(-1)!.fiscal_year,
+    quote_as_of: quote.as_of,
+  };
+  compsCache.set(ticker, { expiresAt: Date.now() + COMPS_CACHE_TTL_MS, company });
+  return company;
+}
+
+async function buildComparableCompanies(
+  ticker: string,
+  companyName: string,
+  sector: string | null,
+  marketCap: number | null,
+) {
+  const curated = CURATED_PEER_TICKERS[ticker];
+  const candidates = curated ?? await findSectorPeers(ticker, companyName, sector, marketCap);
+  const results = await Promise.allSettled(candidates.slice(0, curated ? 3 : 5).map(buildComparableCompany));
+  const companies = results
+    .filter((result): result is PromiseFulfilledResult<ComparableCompany> => result.status === "fulfilled")
+    .map((result) => result.value)
+    .slice(0, 3);
+  return {
+    companies,
+    methodology: curated
+      ? "Selected operating peers with metrics recalculated from current SEC annual facts and delayed Nasdaq prices"
+      : "Closest available Nasdaq sector peers by market capitalization, with metrics recalculated from SEC annual facts and delayed Nasdaq prices",
+  };
+}
+
+async function quoteData(ticker: string) {
+  const quoteTicker = ticker.replaceAll("-", ".");
+  const headers = {
+    "User-Agent": "Mozilla/5.0 (compatible; AplexAnalysis/0.1; financial research)",
+    Accept: "application/json, text/plain, */*",
+    Origin: "https://www.nasdaq.com",
+    Referer: "https://www.nasdaq.com/",
+  };
+  const [response, summaryResponse] = await Promise.all([
+    fetch(`https://api.nasdaq.com/api/quote/${quoteTicker}/info?assetclass=stocks`, { headers }),
+    fetch(`https://api.nasdaq.com/api/quote/${quoteTicker}/summary?assetclass=stocks`, { headers }).catch(() => null),
+  ]);
   if (!response.ok) throw new Error(`Nasdaq quote request returned ${response.status}`);
   const payload = (await response.json()) as {
     data?: {
@@ -482,8 +639,17 @@ async function quoteData(ticker: string) {
   const price = Number(String(primary?.lastSalePrice ?? "").replaceAll("$", "").replaceAll(",", ""));
   if (!Number.isFinite(price) || price <= 0) throw new Error("Nasdaq did not return a usable delayed price");
   const date = String(primary.lastTradeTimestamp ?? "").match(/[A-Z][a-z]{2} \d{1,2}, \d{4}/)?.[0] ?? String(primary.lastTradeTimestamp);
+  let marketCap: number | null = null;
+  if (summaryResponse?.ok) {
+    const summary = (await summaryResponse.json()) as {
+      data?: { summaryData?: { MarketCap?: { value?: string | null } } };
+    };
+    const parsed = Number(String(summary.data?.summaryData?.MarketCap?.value ?? "").replaceAll("$", "").replaceAll(",", ""));
+    if (Number.isFinite(parsed) && parsed > 0) marketCap = parsed;
+  }
   return {
     price,
+    market_cap: marketCap,
     as_of: date,
     currency: "USD",
     provider: "Nasdaq delayed quote",
@@ -514,6 +680,7 @@ export async function buildAnalysis(rawTicker: string, requested?: Partial<Assum
     warnings.push(`Live delayed quote unavailable. Using dated fallback quote: ${error instanceof Error ? error.message : "Unknown error"}`);
     quote = {
       price: fallback.price,
+      market_cap: null,
       as_of: fallback.priceAsOf,
       currency: "USD",
       provider: "Bundled historical fallback quote",
@@ -522,8 +689,17 @@ export async function buildAnalysis(rawTicker: string, requested?: Partial<Assum
     };
   }
   const assumptions: Assumptions = { ...DEFAULT_ASSUMPTIONS, ...requested };
-  const metrics = calculateMetrics(financials.periods, quote.price);
-  const peers = PEERS[ticker] ?? [];
+  const metrics = calculateMetrics(financials.periods, quote.price, quote.market_cap);
+  const peerSet = await buildComparableCompanies(
+    ticker,
+    financials.profile.name,
+    financials.profile.sector,
+    metrics.market_cap,
+  ).catch(() => ({
+    companies: [] as ComparableCompany[],
+    methodology: "Comparable-company retrieval was unavailable for this request",
+  }));
+  const peers = peerSet.companies;
   const valuation = calculateValuation(financials.periods, metrics, quote.price, assumptions, peers);
   const score = calculateScore(metrics, valuation);
   const buyTarget = calculateBuyTarget(metrics, valuation, score);
@@ -560,8 +736,9 @@ export async function buildAnalysis(rawTicker: string, requested?: Partial<Assum
       financials: sourceMode,
       quote: quote.provider,
       risk_factors: financials.filingRisks.length ? "latest annual filing" : "quantitative fallback",
-      peer_snapshot_as_of: "2025-02-28",
-      methodology_version: "0.1.0-sites",
+      comparables: peerSet.methodology,
+      peer_snapshot_as_of: peers.length ? peers.map((peer) => peer.quote_as_of).join(" | ") : "Unavailable",
+      methodology_version: "0.2.0-sites",
       generated_at: new Date().toISOString(),
       warnings,
     },

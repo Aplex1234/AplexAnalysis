@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Button,
   InlineNotification,
@@ -30,7 +30,7 @@ import type { ComponentType } from "react";
 
 import { fetchAnalysis, runValuation, searchSecurities } from "@/lib/api";
 import { compactMoney, money, multiple, percent, titleCase } from "@/lib/format";
-import type { Analysis, DcfAssumptions, SecuritySearchResult } from "@/lib/types";
+import type { Analysis, ComparableCompany, DcfAssumptions, SecuritySearchResult } from "@/lib/types";
 import { FinancialChart } from "./FinancialChart";
 import { FinancialExplorer } from "./FinancialExplorer";
 import { StockPriceChart } from "./StockPriceChart";
@@ -57,6 +57,9 @@ const DEFAULT_ASSUMPTIONS: DcfAssumptions = {
   terminal_growth: 0.025,
 };
 
+const RECENT_SEARCHES_KEY = "aplex-recent-securities";
+const RECENT_SEARCH_LIMIT = 5;
+
 export function ResearchTerminal() {
   const [tickerInput, setTickerInput] = useState("AAPL");
   const [ticker, setTicker] = useState("AAPL");
@@ -69,7 +72,19 @@ export function ResearchTerminal() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searching, setSearching] = useState(false);
   const [highlightedResult, setHighlightedResult] = useState(-1);
+  const [recentSearches, setRecentSearches] = useState<SecuritySearchResult[]>([]);
   const [theme, setTheme] = useState<"light" | "dark">("dark");
+
+  const rememberSecurity = useCallback((result: SecuritySearchResult) => {
+    setRecentSearches((current) => {
+      const next = [
+        result,
+        ...current.filter((item) => item.ticker !== result.ticker),
+      ].slice(0, RECENT_SEARCH_LIMIT);
+      window.localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     const savedTheme = window.localStorage.getItem("aplex-theme-premium");
@@ -81,13 +96,47 @@ export function ResearchTerminal() {
   }, []);
 
   useEffect(() => {
+    try {
+      const savedSearches = JSON.parse(window.localStorage.getItem(RECENT_SEARCHES_KEY) ?? "[]");
+      if (Array.isArray(savedSearches)) {
+        setRecentSearches(
+          savedSearches
+            .filter((item): item is SecuritySearchResult => (
+              typeof item === "object" &&
+              item !== null &&
+              typeof item.ticker === "string" &&
+              typeof item.name === "string"
+            ))
+            .slice(0, RECENT_SEARCH_LIMIT),
+        );
+      }
+    } catch {
+      window.localStorage.removeItem(RECENT_SEARCHES_KEY);
+    }
+  }, []);
+
+  useEffect(() => {
     const controller = new AbortController();
     let active = true;
     setLoading(true);
     setError(null);
     fetchAnalysis(ticker, controller.signal)
       .then((value) => {
-        if (active) setAnalysis(value);
+        if (active) {
+          setAnalysis(value);
+          rememberSecurity({
+            issuer_id: value.company.cik,
+            security_id: `ticker:${value.company.ticker}`,
+            listing_id: `${value.company.exchange ?? "US"}:${value.company.ticker}`,
+            ticker: value.company.ticker,
+            name: value.company.name,
+            cik: value.company.cik,
+            exchange: value.company.exchange ?? "US",
+            mic: value.company.exchange ?? "US",
+            security_type: "Common stock",
+            coverage: "SEC filings",
+          });
+        }
       })
       .catch((requestError: Error) => {
         if (active && requestError.name !== "AbortError") setError(requestError.message);
@@ -99,13 +148,12 @@ export function ResearchTerminal() {
       active = false;
       controller.abort();
     };
-  }, [ticker, requestVersion]);
+  }, [ticker, requestVersion, rememberSecurity]);
 
   useEffect(() => {
     const query = tickerInput.trim();
     if (!query) {
       setSearchResults([]);
-      setSearchOpen(false);
       setSearching(false);
       return;
     }
@@ -134,7 +182,18 @@ export function ResearchTerminal() {
     };
   }, [tickerInput]);
 
+  const uniqueRecentSearches = useMemo(() => {
+    const resultTickers = new Set(searchResults.map((item) => item.ticker));
+    return recentSearches.filter((item) => !resultTickers.has(item.ticker));
+  }, [recentSearches, searchResults]);
+
+  const searchOptions = useMemo(
+    () => [...searchResults, ...uniqueRecentSearches],
+    [searchResults, uniqueRecentSearches],
+  );
+
   function selectSecurity(result: SecuritySearchResult) {
+    rememberSecurity(result);
     setTickerInput(result.ticker);
     setTicker(result.ticker);
     setSearchOpen(false);
@@ -143,12 +202,17 @@ export function ResearchTerminal() {
 
   function submitTicker(event: FormEvent) {
     event.preventDefault();
-    if (searchOpen && highlightedResult >= 0 && searchResults[highlightedResult]) {
-      selectSecurity(searchResults[highlightedResult]);
-      return;
-    }
     const normalized = tickerInput.trim().toUpperCase();
     if (normalized) {
+      const exactMatch = [...searchResults, ...recentSearches].find((item) => item.ticker === normalized);
+      if (exactMatch) {
+        selectSecurity(exactMatch);
+        return;
+      }
+      if (searchOpen && highlightedResult >= 0 && searchOptions[highlightedResult]) {
+        selectSecurity(searchOptions[highlightedResult]);
+        return;
+      }
       setTicker(normalized);
       setSearchOpen(false);
     }
@@ -165,7 +229,6 @@ export function ResearchTerminal() {
     <div className="terminal-shell" data-theme={theme}>
       <header className="topbar">
         <div className="brand-lockup" aria-label="AplexAnalysis home">
-          <span className="brand-mark">A</span>
           <span className="brand-name"><strong>Aplex</strong>Analysis</span>
         </div>
         <div className="search-module">
@@ -184,26 +247,36 @@ export function ResearchTerminal() {
                 aria-expanded={searchOpen}
                 aria-activedescendant={highlightedResult >= 0 ? `security-result-${highlightedResult}` : undefined}
                 autoComplete="off"
-                onFocus={() => setSearchOpen(searchResults.length > 0)}
+                onFocus={() => {
+                  setSearchOpen(true);
+                  setHighlightedResult(searchOptions.length ? 0 : -1);
+                }}
                 onBlur={() => window.setTimeout(() => setSearchOpen(false), 120)}
-                onChange={(event) => setTickerInput(event.target.value)}
+                onChange={(event) => {
+                  setTickerInput(event.target.value);
+                  setSearchResults([]);
+                  setHighlightedResult(-1);
+                }}
                 onKeyDown={(event) => {
-                  if (event.key === "ArrowDown" && searchResults.length) {
+                  if (event.key === "ArrowDown" && searchOptions.length) {
                     event.preventDefault();
                     setSearchOpen(true);
-                    setHighlightedResult((value) => (value + 1) % searchResults.length);
-                  } else if (event.key === "ArrowUp" && searchResults.length) {
+                    setHighlightedResult((value) => (value + 1) % searchOptions.length);
+                  } else if (event.key === "ArrowUp" && searchOptions.length) {
                     event.preventDefault();
                     setSearchOpen(true);
-                    setHighlightedResult((value) => (value <= 0 ? searchResults.length - 1 : value - 1));
+                    setHighlightedResult((value) => (value <= 0 ? searchOptions.length - 1 : value - 1));
                   } else if (event.key === "Escape") {
                     setSearchOpen(false);
                   }
                 }}
               />
               {searchOpen && (
-                <div id="security-search-results" className="search-results" role="listbox" aria-label="Matching securities">
-                  {searchResults.length ? searchResults.map((result, index) => (
+                <div id="security-search-results" className="search-results" role="listbox" aria-label="Security search suggestions">
+                  {searchResults.length > 0 && (
+                    <div className="search-group-label" role="presentation">Matching companies</div>
+                  )}
+                  {searchResults.map((result, index) => (
                     <button
                       id={`security-result-${index}`}
                       key={result.listing_id}
@@ -219,7 +292,33 @@ export function ResearchTerminal() {
                       <span>{result.name}</span>
                       <small>{result.exchange} / {result.mic}</small>
                     </button>
-                  )) : !searching && <p>No matching SEC-reporting companies</p>}
+                  ))}
+                  {uniqueRecentSearches.length > 0 && (
+                    <div className="search-group-label" role="presentation">Recently searched</div>
+                  )}
+                  {uniqueRecentSearches.map((result, index) => {
+                    const optionIndex = searchResults.length + index;
+                    return (
+                      <button
+                        id={`security-result-${optionIndex}`}
+                        key={`recent-${result.ticker}`}
+                        type="button"
+                        role="option"
+                        aria-selected={optionIndex === highlightedResult}
+                        className={optionIndex === highlightedResult ? "is-highlighted" : ""}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onMouseEnter={() => setHighlightedResult(optionIndex)}
+                        onClick={() => selectSecurity(result)}
+                      >
+                        <strong>{result.ticker}</strong>
+                        <span>{result.name}</span>
+                        <small>{result.exchange} / {result.mic}</small>
+                      </button>
+                    );
+                  })}
+                  {!searching && searchOptions.length === 0 && (
+                    <p>{tickerInput.trim() ? "No matching SEC-reporting companies" : "Your recent searches will appear here."}</p>
+                  )}
                 </div>
               )}
               <span className="search-status" aria-live="polite">
@@ -240,24 +339,6 @@ export function ResearchTerminal() {
       </header>
 
       <aside className="sidebar" aria-label="Research sections">
-        <div className="watchlist">
-          <span>QUICK ACCESS</span>
-          <div>
-            {["AAPL", "MA", "NVDA", "COST"].map((quickTicker) => (
-              <button
-                key={quickTicker}
-                type="button"
-                className={ticker === quickTicker ? "is-current" : ""}
-                onClick={() => {
-                  setTickerInput(quickTicker);
-                  setTicker(quickTicker);
-                }}
-              >
-                {quickTicker}
-              </button>
-            ))}
-          </div>
-        </div>
         <nav>
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
@@ -582,27 +663,97 @@ function BuyTargetView({ analysis }: { analysis: Analysis }) {
 }
 
 function CompsView({ analysis }: { analysis: Analysis }) {
-  const target = {
+  const target: ComparableCompany = {
     ticker: analysis.company.ticker,
-    revenue_growth: analysis.metrics.revenue_growth_yoy ?? 0,
-    ebitda_margin: analysis.metrics.operating_margin ?? 0,
-    fcf_margin: analysis.metrics.fcf_margin ?? 0,
-    roic: analysis.metrics.roic ?? 0,
-    pe: analysis.metrics.pe ?? 0,
-    ev_revenue: 0,
-    ev_ebitda: 0,
-    price_fcf: analysis.metrics.price_to_fcf ?? 0,
+    name: analysis.company.name,
+    sector: analysis.company.sector,
+    industry: analysis.company.industry,
+    price: analysis.quote.price,
+    market_cap: analysis.metrics.market_cap ?? null,
+    revenue_growth: analysis.metrics.revenue_growth_yoy ?? null,
+    net_income_growth: analysis.metrics.net_income_growth_yoy ?? null,
+    operating_margin: analysis.metrics.operating_margin ?? null,
+    fcf_margin: analysis.metrics.fcf_margin ?? null,
+    roic: analysis.metrics.roic ?? null,
+    pe: analysis.metrics.pe ?? null,
+    price_to_book: analysis.metrics.price_to_book ?? null,
+    price_fcf: analysis.metrics.price_to_fcf ?? null,
+    fcf_yield: analysis.metrics.fcf_yield ?? null,
+    fiscal_year: analysis.financials.at(-1)?.fiscal_year ?? 0,
+    quote_as_of: analysis.quote.as_of,
   };
   const rows = [target, ...analysis.comps];
+  const peerPes = analysis.comps
+    .map((company) => company.pe)
+    .filter((value): value is number => value != null && Number.isFinite(value) && value > 0)
+    .sort((a, b) => a - b);
+  const peerMedianPe = peerPes.length ? peerPes[Math.floor(peerPes.length / 2)] : null;
+  const growthClass = (value: number | null) => value == null ? "" : value >= 0 ? "is-positive" : "is-negative";
+  const fiscalYears = [...new Set(rows.map((row) => row.fiscal_year).filter(Boolean))].sort((a, b) => b - a);
+  const fiscalCoverage = fiscalYears.length === 1 ? `Fiscal ${fiscalYears[0]}` : `Fiscal years ${fiscalYears.join(", ")}`;
+
   return (
     <div className="page-stack">
-      <section className="table-section">
-        <SectionHeading title="Comparable companies" detail={`Peer snapshot dated ${analysis.provenance.peer_snapshot_as_of}; target metrics use current analysis`} />
-        <table className="research-table comps-table">
-          <thead><tr><th>Company</th><th>Revenue growth</th><th>EBITDA / Op. margin</th><th>FCF margin</th><th>ROIC</th><th>P / E</th><th>EV / Revenue</th><th>EV / EBITDA</th><th>P / FCF</th><th>FCF yield</th></tr></thead>
-          <tbody>{rows.map((row) => <tr key={String(row.ticker)} className={row.ticker === analysis.company.ticker ? "target-row" : ""}><th>{row.ticker}</th><td>{percent(Number(row.revenue_growth))}</td><td>{percent(Number(row.ebitda_margin))}</td><td>{percent(Number(row.fcf_margin))}</td><td>{percent(Number(row.roic))}</td><td>{multiple(Number(row.pe))}</td><td>{Number(row.ev_revenue) ? multiple(Number(row.ev_revenue)) : "N/A"}</td><td>{Number(row.ev_ebitda) ? multiple(Number(row.ev_ebitda)) : "N/A"}</td><td>{multiple(Number(row.price_fcf))}</td><td>{percent(1 / Number(row.price_fcf))}</td></tr>)}</tbody>
-        </table>
-        <InlineNotification kind="info" lowContrast hideCloseButton title="Comparability note" subtitle="Peer figures are dated reference snapshots. Enterprise-value metrics for the target require a live market-cap feed and are left unfilled instead of estimated." />
+      <section className="comps-overview" aria-labelledby="comps-heading">
+        <div className="comps-overview-heading">
+          <div>
+            <span>PEER BENCHMARK</span>
+            <h2 id="comps-heading">{analysis.company.name}</h2>
+            <p>{analysis.comps.length ? `Current valuation and operating performance against ${analysis.comps.length} comparable companies.` : "Current valuation and operating performance. Comparable-company data is temporarily unavailable."}</p>
+          </div>
+          <div className="comps-peer-count"><strong>{analysis.comps.length}</strong><span>peers loaded</span></div>
+        </div>
+        <div className="comps-benchmark-strip">
+          <div><span>Target market cap</span><strong>{compactMoney(target.market_cap)}</strong></div>
+          <div><span>Target P / E</span><strong>{multiple(target.pe)}</strong></div>
+          <div><span>Peer median P / E</span><strong>{multiple(peerMedianPe)}</strong></div>
+          <div><span>Target FCF margin</span><strong>{percent(target.fcf_margin)}</strong></div>
+        </div>
+      </section>
+
+      <section className="table-section comps-section">
+        <div className="comps-table-heading">
+          <SectionHeading title="Operating and valuation comparison" detail="Annual filing metrics paired with the latest available delayed price" />
+          <span>{analysis.comps.length ? `${rows.length} companies` : "Target only"}</span>
+        </div>
+        <div className="comps-table-scroll">
+          <table className="research-table comps-table">
+            <thead>
+              <tr><th>Company</th><th>Market cap</th><th>Revenue growth</th><th>Income growth</th><th>Operating margin</th><th>FCF margin</th><th>ROIC</th><th>P / E</th><th>P / B</th><th>P / FCF</th><th>FCF yield</th></tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const isTarget = row.ticker === analysis.company.ticker;
+                return (
+                  <tr key={row.ticker} className={isTarget ? "target-row" : ""}>
+                    <th scope="row">
+                      <div className="comps-company-cell">
+                        <span className="comps-symbol">{row.ticker}</span>
+                        <span className="comps-company-name">{row.name}</span>
+                        {isTarget && <span className="comps-target-label">Target</span>}
+                      </div>
+                    </th>
+                    <td>{compactMoney(row.market_cap)}</td>
+                    <td className={growthClass(row.revenue_growth)}>{percent(row.revenue_growth)}</td>
+                    <td className={growthClass(row.net_income_growth)}>{percent(row.net_income_growth)}</td>
+                    <td>{percent(row.operating_margin)}</td>
+                    <td>{percent(row.fcf_margin)}</td>
+                    <td>{percent(row.roic)}</td>
+                    <td>{multiple(row.pe)}</td>
+                    <td>{multiple(row.price_to_book)}</td>
+                    <td>{multiple(row.price_fcf)}</td>
+                    <td>{percent(row.fcf_yield)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div className="comps-methodology">
+          <Information size={16} />
+          <p><strong>How peers are built</strong><span>{analysis.provenance.comparables}. {fiscalCoverage} annual data is shown where available.</span></p>
+        </div>
+        {!analysis.comps.length && <div className="comps-empty"><p>No reliable peer rows were available for this company. The target metrics remain current, and the app will retry peer retrieval on the next analysis.</p></div>}
       </section>
     </div>
   );

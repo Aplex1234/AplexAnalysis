@@ -72,6 +72,26 @@ export type StockPriceHistory = {
   is_delayed: boolean;
 };
 
+export type ComparableCompany = {
+  ticker: string;
+  name: string;
+  sector: string | null;
+  industry: string | null;
+  price: number;
+  market_cap: number | null;
+  revenue_growth: number | null;
+  net_income_growth: number | null;
+  operating_margin: number | null;
+  fcf_margin: number | null;
+  roic: number | null;
+  pe: number | null;
+  price_to_book: number | null;
+  price_fcf: number | null;
+  fcf_yield: number | null;
+  fiscal_year: number;
+  quote_as_of: string;
+};
+
 export type Analysis = {
   company: {
     ticker: string;
@@ -141,7 +161,7 @@ export type Analysis = {
     weights: Record<string, number>;
     formula: string;
   };
-  comps: Array<Record<string, number | string>>;
+  comps: ComparableCompany[];
   filings: Array<{
     form: string;
     filing_date: string;
@@ -161,6 +181,7 @@ export type Analysis = {
     financials: string;
     quote: string;
     risk_factors: string;
+    comparables: string;
     peer_snapshot_as_of: string;
     methodology_version: string;
     generated_at: string;
