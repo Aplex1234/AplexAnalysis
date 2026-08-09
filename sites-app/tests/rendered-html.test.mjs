@@ -8,7 +8,9 @@ import { normalizeCompanyFacts, normalizeQuarterlyCompanyFacts } from "../lib/se
 import { calculatePegProjection } from "../lib/server/peg.ts";
 import { extractRiskFactorHeadings } from "../lib/server/risk-factors.ts";
 import { summarizeCompanyDescription } from "../lib/server/company-description.ts";
-import { parseCachedAnalysisRow } from "../lib/server/analysis-cache.ts";
+import { cacheIdentity, hasSameFinancialFingerprint, isAnalysisCacheCompatible, parseCachedAnalysisRow } from "../lib/server/analysis-cache.ts";
+import { buildAnalysis } from "../lib/server/analysis.ts";
+import { ANALYSIS_SCHEMA_VERSION, NORMALIZATION_VERSION, SCORE_MODEL_VERSION, VALUATION_MODEL_VERSION } from "../lib/server/model-versions.ts";
 
 async function render() {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -82,6 +84,106 @@ test("validates cached analysis and reports its freshness", () => {
   assert.equal(parseCachedAnalysisRow(row, Date.parse("2026-08-08T12:10:00.000Z"))?.isFresh, true);
   assert.equal(parseCachedAnalysisRow(row, Date.parse("2026-08-08T12:20:00.000Z"))?.isFresh, false);
   assert.equal(parseCachedAnalysisRow({ ...row, payload_json: "not-json" }), null);
+});
+
+test("invalidates only incompatible derived snapshots while retaining company-scoped financial identities", () => {
+  const compatible = {
+    schema_version: ANALYSIS_SCHEMA_VERSION,
+    normalization_version: NORMALIZATION_VERSION,
+    valuation_model_version: VALUATION_MODEL_VERSION,
+    score_model_version: SCORE_MODEL_VERSION,
+  };
+  assert.equal(isAnalysisCacheCompatible(compatible), true);
+  assert.equal(isAnalysisCacheCompatible({ ...compatible, valuation_model_version: "valuation-next" }), false);
+
+  const cached = { sourceFingerprint: "accession-a" };
+  assert.equal(hasSameFinancialFingerprint(cached, { accessionNumber: "accession-a", filingDate: "2026-08-01", form: "10-Q" }), true);
+  assert.equal(hasSameFinancialFingerprint(cached, { accessionNumber: "accession-b", filingDate: "2026-08-02", form: "10-Q" }), false);
+
+  const companyA = cacheIdentity({ cik: "0000000001", ticker: "AAA", exchange: "NASDAQ" });
+  const companyB = cacheIdentity({ cik: "0000000002", ticker: "BBB", exchange: "NYSE" });
+  assert.notEqual(companyA.companyId, companyB.companyId);
+  assert.notEqual(companyA.listingId, companyB.listingId);
+});
+
+test("rebuilds valuation and score from supplied normalized inputs with external access disabled", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error("External access disabled for cache rebuild test"); };
+  const makePeriod = (year, revenue, income, cashFlow) => ({
+    fiscal_year: year,
+    period_type: "FY",
+    period_end: `${year}-12-31`,
+    filed_at: `${year + 1}-02-01`,
+    accession_number: `${year}-cache-test`,
+    form: "10-K",
+    currency: "USD",
+    values: {
+      revenue,
+      operating_income: income * 1.2,
+      net_income: income,
+      operating_cash_flow: cashFlow,
+      capex: cashFlow * 0.2,
+      free_cash_flow: cashFlow * 0.8,
+      cash: 20_000_000_000,
+      total_debt: 5_000_000_000,
+      equity: 40_000_000_000,
+      diluted_shares: 1_000_000_000,
+      shares_outstanding: 1_000_000_000,
+    },
+    provenance: {},
+  });
+  const financials = {
+    profile: {
+      cik: "0000000001",
+      name: "Cached Company",
+      sector: "Technology",
+      industry: "Software",
+      exchange: "NASDAQ",
+      description: "Cached Company develops business software.",
+      description_source: "Cached normalized source",
+      description_source_url: "https://www.sec.gov/",
+    },
+    periods: [
+      makePeriod(2023, 100_000_000_000, 20_000_000_000, 25_000_000_000),
+      makePeriod(2024, 110_000_000_000, 23_000_000_000, 28_000_000_000),
+      makePeriod(2025, 121_000_000_000, 26_000_000_000, 31_000_000_000),
+    ],
+    quarterlyPeriods: [],
+    filings: [],
+    filingRisks: [],
+  };
+
+  try {
+    const analysis = await buildAnalysis("CACH", undefined, {
+      financials,
+      financialSourceMode: "normalized-cache",
+      quote: {
+        price: 120,
+        market_cap: 120_000_000_000,
+        as_of: "2026-08-09T12:00:00.000Z",
+        currency: "USD",
+        provider: "Cached quote",
+        source_url: null,
+        is_delayed: true,
+      },
+      analystEstimates: {
+        quarterly: [],
+        annual: [],
+        provider: "Cached estimates",
+        as_of: "2026-08-09T00:00:00.000Z",
+        source_url: "https://www.nasdaq.com/",
+        disclosure: "Cached test data.",
+      },
+      peerSet: { companies: [], methodology: "Cached peer set" },
+    });
+    assert.equal(analysis.company.name, "Cached Company");
+    assert.equal(analysis.provenance.financials, "normalized-cache");
+    assert.equal(analysis.financials.length, 3);
+    assert.ok(Number.isFinite(analysis.headline.fair_value));
+    assert.ok(Number.isFinite(analysis.score.overall));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("financial chart scales operating income to readable billions", () => {

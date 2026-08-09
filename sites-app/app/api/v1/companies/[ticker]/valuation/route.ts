@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
-import { buildAnalysis, type Assumptions } from "@/lib/server/analysis";
+import type { Assumptions } from "@/lib/server/analysis";
+import { rebuildAnalysisFromComponentCaches } from "@/lib/server/analysis-service";
 
 export async function POST(request: Request, context: { params: Promise<{ ticker: string }> }) {
   try {
     const { ticker } = await context.params;
     const payload = (await request.json()) as { assumptions?: Partial<Assumptions> };
     return NextResponse.json({
-      data: await buildAnalysis(ticker, payload.assumptions),
+      data: await rebuildAnalysisFromComponentCaches(ticker, payload.assumptions, false),
       meta: { ticker: ticker.toUpperCase(), custom_assumptions: true },
     });
   } catch (error) {
@@ -16,4 +17,3 @@ export async function POST(request: Request, context: { params: Promise<{ ticker
     );
   }
 }
-

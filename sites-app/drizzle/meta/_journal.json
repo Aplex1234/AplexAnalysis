@@ -8,6 +8,13 @@
       "when": 1786240738486,
       "tag": "0000_noisy_doctor_strange",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1786260539011,
+      "tag": "0001_cheerful_phantom_reporter",
+      "breakpoints": true
     }
   ]
 }

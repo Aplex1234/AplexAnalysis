@@ -1,16 +1,20 @@
 import { NextResponse } from "next/server";
-import { buildAnalysis } from "@/lib/server/analysis";
 import {
   acquireRefreshLease,
   readCachedAnalysis,
+  recordCompanyView,
   recordRefreshFailure,
   scheduleBackgroundRefresh,
-  writeCachedAnalysis,
 } from "@/lib/server/analysis-cache";
+import {
+  markSnapshotFreshness,
+  rebuildAnalysisFromComponentCaches,
+  refreshDueCompanies,
+} from "@/lib/server/analysis-service";
 
 async function refreshCachedAnalysis(ticker: string, listingId: string) {
   try {
-    await writeCachedAnalysis(await buildAnalysis(ticker));
+    await rebuildAnalysisFromComponentCaches(ticker);
   } catch (error) {
     await recordRefreshFailure(listingId, error);
   }
@@ -29,8 +33,12 @@ export async function GET(request: Request, context: { params: Promise<{ ticker:
         refreshing = await scheduleBackgroundRefresh(refreshCachedAnalysis(normalizedTicker, cached.listingId));
         if (!refreshing) await recordRefreshFailure(cached.listingId, "Background refresh is unavailable in this runtime");
       }
+      await recordCompanyView(normalizedTicker, cached.listingId);
+      if (cached.isFresh) {
+        await scheduleBackgroundRefresh(refreshDueCompanies(1, normalizedTicker));
+      }
       return NextResponse.json({
-        data: cached.analysis,
+        data: markSnapshotFreshness(cached.analysis, cached.isFresh ? "cached" : refreshing ? "refreshing" : "stale"),
         meta: {
           ticker: normalizedTicker,
           cache: cached.isFresh ? "hit" : "stale",
@@ -41,11 +49,11 @@ export async function GET(request: Request, context: { params: Promise<{ ticker:
       });
     }
 
-    const analysis = await buildAnalysis(normalizedTicker);
-    const cachedSuccessfully = await writeCachedAnalysis(analysis);
+    const analysis = await rebuildAnalysisFromComponentCaches(normalizedTicker);
+    const persisted = await readCachedAnalysis(normalizedTicker);
     return NextResponse.json({
       data: analysis,
-      meta: { ticker: normalizedTicker, cache: forceRefresh ? "refresh" : "miss", cached: cachedSuccessfully },
+      meta: { ticker: normalizedTicker, cache: forceRefresh ? "refresh" : "miss", cached: Boolean(persisted) },
     });
   } catch (error) {
     return NextResponse.json(

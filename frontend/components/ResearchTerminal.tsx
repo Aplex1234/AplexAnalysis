@@ -408,9 +408,26 @@ function ErrorState({ ticker, error, retry }: { ticker: string; error: string; r
   );
 }
 
+function freshnessTime(value: string | null | undefined, dateOnly = false) {
+  if (!value) return "Unavailable";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString("en-US", dateOnly
+    ? { month: "short", day: "numeric", year: "numeric" }
+    : { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
 function CompanyHeader({ analysis }: { analysis: Analysis }) {
   const classification = [analysis.company.sector, analysis.company.industry].filter(Boolean).join(" / ");
   const peg = analysis.valuation.growth_projection.peg_ratio;
+  const freshness = analysis.freshness;
+  const statusLabel = freshness?.page_status === "refreshing"
+    ? "Refreshing"
+    : freshness?.page_status === "stale"
+      ? "Cached, refresh pending"
+      : freshness?.page_status === "cached"
+        ? "Cached"
+        : "Fresh";
   return (
     <section className="company-header">
       <div className="company-identity">
@@ -419,7 +436,7 @@ function CompanyHeader({ analysis }: { analysis: Analysis }) {
           <div className="company-title-row">
             <h1>{analysis.company.name}</h1>
             <span>{analysis.company.ticker}</span>
-            <Tag type="green">{analysis.provenance.financials === "live-sec" ? "SEC verified" : "Snapshot"}</Tag>
+            <Tag type={freshness?.page_status === "stale" ? "warm-gray" : "green"}>{statusLabel}</Tag>
           </div>
           <p>{analysis.company.exchange || "US listed"} / {classification || "SEC reporting company"}</p>
           <div className="company-price-line">
@@ -435,6 +452,14 @@ function CompanyHeader({ analysis }: { analysis: Analysis }) {
         <div><span>PEG</span><strong>{peg == null ? "N/A" : peg.toFixed(2)}</strong></div>
         <div><span>Price / book</span><strong>{multiple(analysis.metrics.price_to_book)}</strong></div>
       </div>
+      {freshness && (
+        <div className="freshness-strip" aria-label="Data freshness">
+          <div><span>Financial filing</span><strong>{freshnessTime(freshness.financials.as_of, true)}</strong><small>{freshness.financials.status}</small></div>
+          <div><span>Quote updated</span><strong>{freshnessTime(freshness.quote.as_of)}</strong><small>{freshness.quote.status}</small></div>
+          <div><span>Estimates updated</span><strong>{freshnessTime(freshness.analyst_estimates.as_of)}</strong><small>{freshness.analyst_estimates.status}</small></div>
+          <div><span>Comparable set</span><strong>{freshnessTime(freshness.comps.as_of)}</strong><small>{freshness.comps.status}</small></div>
+        </div>
+      )}
     </section>
   );
 }

@@ -1,17 +1,22 @@
-import { normalizeTicker, resolveSecurity } from "./security-master";
-import { extractRiskFactorHeadings } from "./risk-factors";
-import { calculatePegProjection } from "./peg";
-import { summarizeCompanyDescription } from "./company-description";
+import { normalizeTicker, resolveSecurity } from "./security-master.ts";
+import { extractRiskFactorHeadings } from "./risk-factors.ts";
+import { calculatePegProjection } from "./peg.ts";
+import { summarizeCompanyDescription } from "./company-description.ts";
+import {
+  NORMALIZATION_VERSION,
+  SCORE_MODEL_VERSION,
+  VALUATION_MODEL_VERSION,
+} from "./model-versions.ts";
 import {
   normalizeCompanyFacts,
   normalizeQuarterlyCompanyFacts,
   type FinancialValues,
   type NormalizedPeriod,
   type SecCompanyFacts,
-} from "./sec-normalizer";
+} from "./sec-normalizer.ts";
 
 type Values = FinancialValues;
-type CompanyProfile = {
+export type CompanyProfile = {
   cik: string;
   name: string;
   sector: string | null;
@@ -21,14 +26,14 @@ type CompanyProfile = {
   description_source: string;
   description_source_url: string;
 };
-type Filing = {
+export type Filing = {
   form: string;
   filing_date: string | null;
   report_date: string | null;
   accession_number: string;
   source_url: string;
 };
-type CompanyRisk = {
+export type CompanyRisk = {
   severity: "filed" | "high" | "medium" | "low";
   title: string;
   detail: string;
@@ -36,14 +41,14 @@ type CompanyRisk = {
   filing_date?: string | null;
   form?: string;
 };
-type FinancialSource = {
+export type FinancialSource = {
   profile: CompanyProfile;
   periods: Period[];
   quarterlyPeriods: Period[];
   filings: Filing[];
   filingRisks: CompanyRisk[];
 };
-type Quote = {
+export type Quote = {
   price: number;
   market_cap: number | null;
   as_of: string;
@@ -53,7 +58,7 @@ type Quote = {
   is_delayed: boolean;
 };
 type Period = NormalizedPeriod;
-type ComparableCompany = {
+export type ComparableCompany = {
   ticker: string;
   name: string;
   sector: string | null;
@@ -87,13 +92,33 @@ type AnalystEstimateRow = {
   revisions_up: number | null;
   revisions_down: number | null;
 };
-type AnalystEstimates = {
+export type AnalystEstimates = {
   quarterly: AnalystEstimateRow[];
   annual: AnalystEstimateRow[];
   provider: string;
   as_of: string | null;
   source_url: string;
   disclosure: string;
+};
+
+export type PeerSet = {
+  companies: ComparableCompany[];
+  methodology: string;
+};
+
+export type AnalysisSources = {
+  financials?: FinancialSource;
+  financialSourceMode?: string;
+  quote?: Quote;
+  analystEstimates?: AnalystEstimates;
+  peerSet?: PeerSet;
+  warnings?: string[];
+};
+
+export type FinancialFingerprint = {
+  accessionNumber: string;
+  filingDate: string | null;
+  form: string | null;
 };
 
 export type Assumptions = {
@@ -498,7 +523,7 @@ function nullableNumber(value: unknown) {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
-async function fetchNasdaqAnalystEstimates(ticker: string): Promise<AnalystEstimates> {
+export async function fetchAnalystEstimates(ticker: string): Promise<AnalystEstimates> {
   const response = await fetch(`https://api.nasdaq.com/api/analyst/${ticker.replaceAll("-", ".")}/earnings-forecast`, {
     headers: {
       "User-Agent": "Mozilla/5.0 (compatible; AplexAnalysis/0.1; financial research)",
@@ -535,7 +560,27 @@ async function fetchNasdaqAnalystEstimates(ticker: string): Promise<AnalystEstim
   };
 }
 
-async function secData(ticker: string, includeRisks = true) {
+export async function fetchFinancialFingerprint(rawTicker: string): Promise<FinancialFingerprint> {
+  const ticker = normalizeTicker(rawTicker);
+  const identity = await resolveSecurity(ticker);
+  const headers = {
+    "User-Agent": process.env.SEC_USER_AGENT ?? "AplexAnalysis/0.1 research@aplexanalysis.app",
+    Accept: "application/json",
+  };
+  const response = await fetch(`https://data.sec.gov/submissions/CIK${identity.cik}.json`, { headers });
+  if (!response.ok) throw new Error(`SEC submissions request returned ${response.status}`);
+  const submissions = (await response.json()) as { filings?: { recent?: Record<string, string[]> } };
+  const recent = submissions.filings?.recent ?? {};
+  const index = (recent.form ?? []).findIndex((form) => ["10-K", "10-Q", "20-F", "40-F"].includes(form));
+  if (index < 0) return { accessionNumber: "none", filingDate: null, form: null };
+  return {
+    accessionNumber: recent.accessionNumber?.[index] ?? "none",
+    filingDate: recent.filingDate?.[index] ?? null,
+    form: recent.form?.[index] ?? null,
+  };
+}
+
+export async function fetchFinancialSource(ticker: string, includeRisks = true): Promise<FinancialSource> {
   const headers = {
     "User-Agent": process.env.SEC_USER_AGENT ?? "AplexAnalysis/0.1 research@aplexanalysis.app",
     Accept: "application/json",
@@ -663,7 +708,7 @@ async function buildComparableCompany(ticker: string): Promise<ComparableCompany
   const cached = compsCache.get(ticker);
   if (cached && cached.expiresAt > Date.now()) return cached.company;
 
-  const [financials, quote] = await Promise.all([secData(ticker, false), quoteData(ticker)]);
+  const [financials, quote] = await Promise.all([fetchFinancialSource(ticker, false), fetchQuote(ticker)]);
   const metrics = calculateMetrics(financials.periods, quote.price, quote.market_cap);
   const company: ComparableCompany = {
     ticker,
@@ -688,7 +733,7 @@ async function buildComparableCompany(ticker: string): Promise<ComparableCompany
   return company;
 }
 
-async function buildComparableCompanies(
+export async function fetchComparableCompanies(
   ticker: string,
   companyName: string,
   sector: string | null,
@@ -709,7 +754,7 @@ async function buildComparableCompanies(
   };
 }
 
-async function quoteData(ticker: string) {
+export async function fetchQuote(ticker: string): Promise<Quote> {
   const quoteTicker = ticker.replaceAll("-", ".");
   const headers = {
     "User-Agent": "Mozilla/5.0 (compatible; AplexAnalysis/0.1; financial research)",
@@ -752,59 +797,71 @@ async function quoteData(ticker: string) {
   };
 }
 
-export async function buildAnalysis(rawTicker: string, requested?: Partial<Assumptions>) {
+export async function buildAnalysis(
+  rawTicker: string,
+  requested?: Partial<Assumptions>,
+  sources: AnalysisSources = {},
+) {
   const ticker = normalizeTicker(rawTicker);
   const fallback = FALLBACK[ticker];
-  const warnings: string[] = [];
+  const warnings: string[] = [...(sources.warnings ?? [])];
   let financials: FinancialSource;
-  let sourceMode = "live-sec";
-  try {
-    financials = await secData(ticker);
-  } catch (error) {
-    if (!fallback) throw error;
-    sourceMode = "fallback-snapshot";
-    warnings.push(`Live SEC retrieval unavailable. Using bundled SEC-derived snapshot: ${error instanceof Error ? error.message : "Unknown error"}`);
-    financials = { profile: fallback.profile, periods: fallback.periods, quarterlyPeriods: [], filings: [], filingRisks: [] };
+  let sourceMode = sources.financialSourceMode ?? "live-sec";
+  if (sources.financials) {
+    financials = sources.financials;
+  } else {
+    try {
+      financials = await fetchFinancialSource(ticker);
+    } catch (error) {
+      if (!fallback) throw error;
+      sourceMode = "fallback-snapshot";
+      warnings.push(`Live SEC retrieval unavailable. Using bundled SEC-derived snapshot: ${error instanceof Error ? error.message : "Unknown error"}`);
+      financials = { profile: fallback.profile, periods: fallback.periods, quarterlyPeriods: [], filings: [], filingRisks: [] };
+    }
   }
   let quote: Quote;
-  try {
-    quote = await quoteData(ticker);
-  } catch (error) {
-    if (!fallback) throw error;
-    warnings.push(`Live delayed quote unavailable. Using dated fallback quote: ${error instanceof Error ? error.message : "Unknown error"}`);
-    quote = {
-      price: fallback.price,
-      market_cap: null,
-      as_of: fallback.priceAsOf,
-      currency: "USD",
-      provider: "Bundled historical fallback quote",
-      source_url: null,
-      is_delayed: true,
-    };
+  if (sources.quote) {
+    quote = sources.quote;
+  } else {
+    try {
+      quote = await fetchQuote(ticker);
+    } catch (error) {
+      if (!fallback) throw error;
+      warnings.push(`Live delayed quote unavailable. Using dated fallback quote: ${error instanceof Error ? error.message : "Unknown error"}`);
+      quote = {
+        price: fallback.price,
+        market_cap: null,
+        as_of: fallback.priceAsOf,
+        currency: "USD",
+        provider: "Bundled historical fallback quote",
+        source_url: null,
+        is_delayed: true,
+      };
+    }
   }
   const assumptions: Assumptions = { ...DEFAULT_ASSUMPTIONS, ...requested };
   const metrics = calculateMetrics(financials.periods, quote.price, quote.market_cap);
-  const peerSet = await buildComparableCompanies(
-    ticker,
-    financials.profile.name,
-    financials.profile.sector,
-    metrics.market_cap,
-  ).catch(() => ({
-    companies: [] as ComparableCompany[],
-    methodology: "Comparable-company retrieval was unavailable for this request",
-  }));
+  const peerSet = sources.peerSet ?? await fetchComparableCompanies(
+      ticker,
+      financials.profile.name,
+      financials.profile.sector,
+      metrics.market_cap,
+    ).catch(() => ({
+      companies: [] as ComparableCompany[],
+      methodology: "Comparable-company retrieval was unavailable for this request",
+    }));
   const peers = peerSet.companies;
   const valuation = calculateValuation(financials.periods, metrics, quote.price, assumptions, peers);
   const score = calculateScore(metrics, valuation);
   const buyTarget = calculateBuyTarget(metrics, valuation, score);
-  const analystEstimates = await fetchNasdaqAnalystEstimates(ticker).catch((): AnalystEstimates => ({
-    quarterly: [],
-    annual: [],
-    provider: "Nasdaq analyst consensus",
-    as_of: null,
-    source_url: `https://www.nasdaq.com/market-activity/stocks/${ticker.toLowerCase()}/earnings`,
-    disclosure: "Analyst EPS estimates are consensus forecasts, not company guidance.",
-  }));
+  const analystEstimates = sources.analystEstimates ?? await fetchAnalystEstimates(ticker).catch((): AnalystEstimates => ({
+      quarterly: [],
+      annual: [],
+      provider: "Nasdaq analyst consensus",
+      as_of: null,
+      source_url: `https://www.nasdaq.com/market-activity/stocks/${ticker.toLowerCase()}/earnings`,
+      disclosure: "Analyst EPS estimates are consensus forecasts, not company guidance.",
+    }));
   const latest = financials.periods.at(-1)!.values;
   const risks: CompanyRisk[] = [...financials.filingRisks];
   if (!risks.length && valuation.reverse_dcf.implied_revenue_growth > 0.15) risks.push({ severity: "high", title: "Demanding expectations", detail: "The current price embeds revenue growth above 15% in the reverse DCF." });
@@ -849,6 +906,9 @@ export async function buildAnalysis(rawTicker: string, requested?: Partial<Assum
       comparables: peerSet.methodology,
       peer_snapshot_as_of: peers.length ? peers.map((peer) => peer.quote_as_of).join(" | ") : "Unavailable",
       methodology_version: "0.2.0-sites",
+      normalization_version: NORMALIZATION_VERSION,
+      valuation_model_version: VALUATION_MODEL_VERSION,
+      score_model_version: SCORE_MODEL_VERSION,
       generated_at: new Date().toISOString(),
       warnings,
     },

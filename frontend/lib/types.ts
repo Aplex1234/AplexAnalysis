@@ -189,6 +189,14 @@ export type Analysis = {
     filing_date?: string | null;
     form?: string;
   }>;
+  freshness?: {
+    page_status: "live" | "cached" | "refreshing" | "stale";
+    financials: DataFreshness;
+    quote: DataFreshness;
+    analyst_estimates: DataFreshness;
+    comps: DataFreshness;
+    summary: DataFreshness;
+  };
   provenance: {
     financials: string;
     quarterly_financials: string;
@@ -198,9 +206,19 @@ export type Analysis = {
     comparables: string;
     peer_snapshot_as_of: string;
     methodology_version: string;
+    normalization_version: string;
+    valuation_model_version: string;
+    score_model_version: string;
     generated_at: string;
     warnings: string[];
   };
+};
+
+export type DataFreshness = {
+  status: "live" | "cached" | "stale" | "unavailable";
+  as_of: string | null;
+  fresh_until: string | null;
+  source: string;
 };
 
 export type AnalystEstimate = {
