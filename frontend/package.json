@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test:valuation": "node --no-warnings --experimental-strip-types --test tests/multiple-valuation.test.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

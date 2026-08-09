@@ -4,7 +4,6 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Button,
   InlineNotification,
-  NumberInput,
   SkeletonText,
   Tag,
   TextInput,
@@ -28,11 +27,12 @@ import {
 } from "@carbon/icons-react";
 import type { ComponentType } from "react";
 
-import { fetchAnalysis, runValuation, searchSecurities } from "@/lib/api";
+import { fetchAnalysis, searchSecurities } from "@/lib/api";
 import { compactMoney, money, multiple, percent, titleCase } from "@/lib/format";
-import type { Analysis, ComparableCompany, DcfAssumptions, SecuritySearchResult } from "@/lib/types";
+import type { Analysis, ComparableCompany, SecuritySearchResult } from "@/lib/types";
 import { FinancialChart } from "./FinancialChart";
 import { FinancialExplorer } from "./FinancialExplorer";
+import { MultipleValuationView } from "./MultipleValuationView";
 import { StockPriceChart } from "./StockPriceChart";
 
 type PageKey = "overview" | "financials" | "valuation" | "buyTarget" | "comps" | "earnings" | "filings" | "risks" | "research";
@@ -48,14 +48,6 @@ const NAV_ITEMS: Array<{ key: PageKey; label: string; icon: ComponentType<{ size
   { key: "risks", label: "Risks", icon: WarningAlt },
   { key: "research", label: "AI Research", icon: Chat },
 ];
-
-const DEFAULT_ASSUMPTIONS: DcfAssumptions = {
-  forecast_years: 5,
-  revenue_growth: 0.08,
-  fcf_margin: 0.20,
-  wacc: 0.09,
-  terminal_growth: 0.025,
-};
 
 const RECENT_SEARCHES_KEY = "aplex-recent-securities";
 const RECENT_SEARCH_LIMIT = 5;
@@ -370,11 +362,7 @@ export function ResearchTerminal() {
             {analysis.provenance.warnings.map((warning) => (
               <InlineNotification key={warning} kind="warning" lowContrast title="Source status" subtitle={warning} hideCloseButton />
             ))}
-            <PageContent
-              page={activePage}
-              analysis={analysis}
-              onAnalysisChange={setAnalysis}
-            />
+            <PageContent page={activePage} analysis={analysis} />
           </>
         )}
       </main>
@@ -464,9 +452,9 @@ function CompanyHeader({ analysis }: { analysis: Analysis }) {
   );
 }
 
-function PageContent({ page, analysis, onAnalysisChange }: { page: PageKey; analysis: Analysis; onAnalysisChange: (value: Analysis) => void }) {
+function PageContent({ page, analysis }: { page: PageKey; analysis: Analysis }) {
   if (page === "financials") return <FinancialsView analysis={analysis} />;
-  if (page === "valuation") return <ValuationView analysis={analysis} onAnalysisChange={onAnalysisChange} />;
+  if (page === "valuation") return <MultipleValuationView analysis={analysis} />;
   if (page === "buyTarget") return <BuyTargetView analysis={analysis} />;
   if (page === "comps") return <CompsView analysis={analysis} />;
   if (page === "earnings") return <EarningsView analysis={analysis} />;
@@ -652,81 +640,6 @@ function EstimateTable({ title, rows }: { title: string; rows: Analysis["analyst
           </table>
         </div>
       ) : <p className="estimate-table-empty">No estimates available.</p>}
-    </div>
-  );
-}
-
-function ValuationView({ analysis, onAnalysisChange }: { analysis: Analysis; onAnalysisChange: (value: Analysis) => void }) {
-  const [assumptions, setAssumptions] = useState<DcfAssumptions>(analysis.valuation.assumptions);
-  const [running, setRunning] = useState(false);
-  const [modelError, setModelError] = useState<string | null>(null);
-  const peg = analysis.valuation.growth_projection;
-
-  async function calculate(event: FormEvent) {
-    event.preventDefault();
-    setRunning(true);
-    setModelError(null);
-    try {
-      onAnalysisChange(await runValuation(analysis.company.ticker, assumptions));
-    } catch (error) {
-      setModelError(error instanceof Error ? error.message : "Valuation failed");
-    } finally {
-      setRunning(false);
-    }
-  }
-
-  return (
-    <div className="page-stack">
-      <section className="valuation-summary">
-        <div><span>BEAR</span><strong>{money(analysis.headline.bear_value)}</strong></div>
-        <div className="base"><span>BLENDED FAIR VALUE</span><strong>{money(analysis.headline.fair_value)}</strong></div>
-        <div><span>BULL</span><strong>{money(analysis.headline.bull_value)}</strong></div>
-        <div><span>MARKET</span><strong>{money(analysis.headline.current_price)}</strong></div>
-      </section>
-      <section className="peg-model">
-        <SectionHeading
-          title="Five-year PEG valuation score"
-          detail="Uses the model's projected revenue growth. Growth is entered as percentage points in the PEG formula."
-        />
-        <div className="peg-score-grid">
-          <div><span>AVG. PROJECTED GROWTH</span><strong>{percent(peg.average_annual_growth)}</strong><small>next five fiscal years</small></div>
-          <div><span>CURRENT P / E</span><strong>{peg.current_pe == null ? "N/A" : multiple(peg.current_pe)}</strong><small>price divided by annual EPS</small></div>
-          <div className="peg-result"><span>PEG RATIO</span><strong>{peg.peg_ratio == null ? "N/A" : peg.peg_ratio.toFixed(2)}</strong><small>full score at {peg.target_peg.toFixed(1)} or lower</small></div>
-          <div><span>VALUATION SCORE</span><strong>{peg.score}<small>/100</small></strong><small>30% of the overall score</small></div>
-        </div>
-        <div className="peg-formula">
-          <span>FORMULA</span>
-          <strong>{peg.current_pe == null ? "P/E unavailable" : peg.current_pe.toFixed(1)} / {(peg.average_annual_growth * 100).toFixed(1)}% growth = {peg.peg_ratio == null ? "N/A" : peg.peg_ratio.toFixed(2)} PEG</strong>
-          <p>{peg.interpretation}</p>
-        </div>
-        <div className="peg-projection-table">
-          <table className="research-table">
-            <thead><tr><th>Fiscal year</th><th>Projected revenue</th><th>Projected net income</th><th>Annual growth</th></tr></thead>
-            <tbody>{peg.projections.map((projection) => <tr key={projection.fiscal_year}><th>{projection.fiscal_year}</th><td>{compactMoney(projection.revenue)}</td><td>{compactMoney(projection.net_income)}</td><td>{percent(projection.growth_rate)}</td></tr>)}</tbody>
-          </table>
-        </div>
-      </section>
-      <section className="split-section valuation-workbench">
-        <form onSubmit={calculate}>
-          <SectionHeading title="DCF assumptions" detail="Edit and rerun the complete valuation stack" />
-          <div className="assumption-grid">
-            <NumberInput id="forecast-years" label="Forecast years" min={3} max={10} value={assumptions.forecast_years} onChange={(_, state) => setAssumptions({ ...assumptions, forecast_years: Number(state.value) })} />
-            <NumberInput id="revenue-growth" label="Revenue growth (%)" step={0.5} value={(assumptions.revenue_growth ?? 0) * 100} onChange={(_, state) => setAssumptions({ ...assumptions, revenue_growth: Number(state.value) / 100 })} />
-            <NumberInput id="fcf-margin" label="FCF margin (%)" step={0.5} value={(assumptions.fcf_margin ?? 0) * 100} onChange={(_, state) => setAssumptions({ ...assumptions, fcf_margin: Number(state.value) / 100 })} />
-            <NumberInput id="wacc" label="WACC (%)" step={0.25} value={assumptions.wacc * 100} onChange={(_, state) => setAssumptions({ ...assumptions, wacc: Number(state.value) / 100 })} />
-            <NumberInput id="terminal-growth" label="Terminal growth (%)" step={0.25} value={assumptions.terminal_growth * 100} onChange={(_, state) => setAssumptions({ ...assumptions, terminal_growth: Number(state.value) / 100 })} />
-          </div>
-          {modelError && <InlineNotification kind="error" title="Model error" subtitle={modelError} lowContrast hideCloseButton />}
-          <Button type="submit" disabled={running} renderIcon={Calculator}>{running ? "Calculating" : "Run valuation"}</Button>
-        </form>
-        <div>
-          <SectionHeading title="Method outputs" detail={analysis.valuation.methodology} />
-          <div className="metric-table">
-            {Object.entries(analysis.valuation.methods).map(([method, value]) => <DataRow key={method} label={titleCase(method)} value={money(value)} />)}
-          </div>
-          <div className="reverse-dcf"><span>REVERSE DCF</span><strong>{percent(analysis.valuation.reverse_dcf.implied_revenue_growth)} implied growth</strong><p>{analysis.valuation.reverse_dcf.interpretation}</p></div>
-        </div>
-      </section>
     </div>
   );
 }
