@@ -412,8 +412,27 @@ function emptyPeerSet(): PeerSet {
 
 export async function rebuildOverviewFromComponentCaches(rawTicker: string) {
   const ticker = normalizeTicker(rawTicker);
-  const financials = await loadFinancials(ticker);
-  const quote = await loadQuote(ticker, financials.data);
+  const [financials, initialQuote] = await Promise.all([
+    loadFinancials(ticker),
+    loadQuote(ticker, null),
+  ]);
+  let quote = initialQuote;
+  if (financials.data && quote.data && !quote.cached && quote.freshness.status === "live") {
+    const stored = await writeComponentCache(
+      ticker,
+      financials.data.profile,
+      "quote",
+      quote.data,
+      COMPONENT_SOURCE_VERSIONS.quote,
+      CACHE_TTLS.quote,
+      quote.data.provider,
+      Date.now(),
+    );
+    quote = {
+      ...quote,
+      freshness: freshness("live", quote.data.as_of, stored?.freshUntil ?? null, quote.data.provider),
+    };
+  }
   const analysis = await buildAnalysis(ticker, undefined, {
     financials: financials.data ?? undefined,
     financialSourceMode: financials.data ? (financials.freshness.status === "live" ? "live-sec" : "normalized-cache") : undefined,

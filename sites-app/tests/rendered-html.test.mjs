@@ -80,6 +80,7 @@ test("routes a cold Overview through the lightweight shared-cache pipeline", asy
   const overviewBuilder = service.match(/export async function rebuildOverviewFromComponentCaches[\s\S]*?\n}\n/)?.[0] ?? "";
   assert.match(overviewBuilder, /loadFinancials/);
   assert.match(overviewBuilder, /loadQuote/);
+  assert.match(overviewBuilder, /Promise\.all/);
   assert.doesNotMatch(overviewBuilder, /loadPeers|loadEstimates/);
 });
 
