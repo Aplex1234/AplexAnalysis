@@ -64,7 +64,7 @@ export type StockPricePoint = {
 
 export type StockPriceHistory = {
   ticker: string;
-  range: "1y";
+  range: "1y" | "5y" | "max";
   points: StockPricePoint[];
   provider: string;
   as_of: string;

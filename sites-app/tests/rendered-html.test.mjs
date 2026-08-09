@@ -121,6 +121,47 @@ test("serves normalized delayed Nasdaq price history for the stock chart", async
   }
 });
 
+test("serves maximum available Yahoo Finance history for long chart ranges", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    chart: {
+      result: [{
+        timestamp: [345479400, 1786132800],
+        indicators: {
+          quote: [{
+            open: [0.13, 225.0],
+            high: [0.14, 230.0],
+            low: [0.12, 224.0],
+            close: [0.13, 229.5],
+            volume: [469_033_600, 54_000_000],
+          }],
+        },
+      }],
+      error: null,
+    },
+  }), { headers: { "content-type": "application/json" } });
+
+  try {
+    const workerUrl = new URL("../dist/server/index.js", import.meta.url);
+    workerUrl.searchParams.set("max-price-history-test", `${process.pid}-${Date.now()}`);
+    const { default: worker } = await import(workerUrl.href);
+    const response = await worker.fetch(
+      new Request("http://localhost/api/v1/companies/LONG/price-history?range=max"),
+      { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
+      { waitUntil() {}, passThroughOnException() {} },
+    );
+    assert.equal(response.status, 200);
+    const payload = await response.json();
+    assert.equal(payload.data.range, "max");
+    assert.equal(payload.data.provider, "Yahoo Finance historical prices");
+    assert.equal(payload.data.points.length, 2);
+    assert.equal(payload.data.points[0].close, 0.13);
+    assert.equal(payload.data.points.at(-1).close, 229.5);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("normalizes Mastercard tag transitions and comparative annual facts", () => {
   const annual = (fy, start, end, val, filed = "2026-02-11") => ({
     form: "10-K",

@@ -69,15 +69,15 @@ export function ResearchTerminal() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searching, setSearching] = useState(false);
   const [highlightedResult, setHighlightedResult] = useState(-1);
-  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [theme, setTheme] = useState<"light" | "dark">("dark");
 
   useEffect(() => {
-    const savedTheme = window.localStorage.getItem("aplex-theme");
+    const savedTheme = window.localStorage.getItem("aplex-theme-premium");
     if (savedTheme === "light" || savedTheme === "dark") {
       setTheme(savedTheme);
       return;
     }
-    setTheme(window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    setTheme("dark");
   }, []);
 
   useEffect(() => {
@@ -157,7 +157,7 @@ export function ResearchTerminal() {
   function toggleTheme() {
     const nextTheme = theme === "dark" ? "light" : "dark";
     setTheme(nextTheme);
-    window.localStorage.setItem("aplex-theme", nextTheme);
+    window.localStorage.setItem("aplex-theme-premium", nextTheme);
   }
 
   return (
@@ -329,21 +329,30 @@ function ErrorState({ ticker, error, retry }: { ticker: string; error: string; r
 
 function CompanyHeader({ analysis }: { analysis: Analysis }) {
   const classification = [analysis.company.sector, analysis.company.industry].filter(Boolean).join(" / ");
+  const peg = analysis.valuation.growth_projection.peg_ratio;
   return (
     <section className="company-header">
-      <div>
-        <div className="company-title-row">
-          <h1>{analysis.company.ticker}</h1>
-          <span>{analysis.company.exchange}</span>
-          <Tag type="blue">{analysis.provenance.financials === "live-sec" ? "SEC VERIFIED" : "SNAPSHOT"}</Tag>
+      <div className="company-identity">
+        <div className="company-avatar" aria-hidden="true">{analysis.company.ticker.slice(0, 2)}</div>
+        <div className="company-overview">
+          <div className="company-title-row">
+            <h1>{analysis.company.name}</h1>
+            <span>{analysis.company.ticker}</span>
+            <Tag type="green">{analysis.provenance.financials === "live-sec" ? "SEC verified" : "Snapshot"}</Tag>
+          </div>
+          <p>{analysis.company.exchange || "US listed"} / {classification || "SEC reporting company"}</p>
+          <div className="company-price-line">
+            <strong>{money(analysis.quote.price)}</strong>
+            <span>Delayed market price</span>
+          </div>
+          <small>As of {analysis.quote.as_of} via {analysis.quote.provider}</small>
         </div>
-        <h2>{analysis.company.name}</h2>
-        <p>{classification || "SEC reporting company"}</p>
       </div>
-      <div className="quote-block">
-        <span>DELAYED PRICE</span>
-        <strong>{money(analysis.quote.price)}</strong>
-        <small>As of {analysis.quote.as_of} via {analysis.quote.provider}</small>
+      <div className="company-snapshot" aria-label="Company market snapshot">
+        <div><span>Market cap</span><strong>{compactMoney(analysis.metrics.market_cap)}</strong></div>
+        <div><span>P / E</span><strong>{multiple(analysis.metrics.pe)}</strong></div>
+        <div><span>PEG</span><strong>{peg == null ? "N/A" : peg.toFixed(2)}</strong></div>
+        <div><span>Price / book</span><strong>{multiple(analysis.metrics.price_to_book)}</strong></div>
       </div>
     </section>
   );
@@ -365,41 +374,41 @@ function OverviewView({ analysis }: { analysis: Analysis }) {
   const headline = analysis.headline;
   return (
     <div className="page-stack">
-      <section className="headline-grid">
-        <div className="score-panel">
-          <span>APLEX SCORE</span>
-          <strong>{headline.score}<small>/100</small></strong>
-          <Tag type={headline.score >= 70 ? "green" : headline.score >= 50 ? "gray" : "red"}>{headline.rating}</Tag>
-          <p>Eight financial and valuation categories, weighted at the current market price.</p>
-        </div>
-        <div className="headline-primary">
-          <MetricCell label="Fair value" value={money(headline.fair_value)} detail={percent(headline.upside) + " upside"} tone={headline.upside >= 0 ? "positive" : "negative"} />
-          <MetricCell label="Buy target" value={money(headline.buy_target)} detail={`${percent(analysis.buy_target.margin_of_safety)} margin of safety`} />
-        </div>
-        <div className="scenario-panel">
-          <div className="scenario-heading"><span>Valuation range</span><small>Per share</small></div>
-          <MetricCell label="Bear" value={money(headline.bear_value)} detail={percent(headline.bear_value / headline.current_price - 1)} />
-          <MetricCell label="Base" value={money(headline.base_value)} detail={percent(headline.base_value / headline.current_price - 1)} />
-          <MetricCell label="Bull" value={money(headline.bull_value)} detail={percent(headline.bull_value / headline.current_price - 1)} />
-        </div>
+      <section className="overview-primary-grid">
+        <StockPriceChart ticker={analysis.company.ticker} />
+        <aside className="conviction-panel">
+          <div className="conviction-heading">
+            <div><span>APLEX SCORE</span><strong>{headline.score}<small>/100</small></strong></div>
+            <Tag type={headline.score >= 70 ? "green" : headline.score >= 50 ? "cool-gray" : "red"}>{headline.rating}</Tag>
+          </div>
+          <p>Weighted across valuation, quality, growth, balance-sheet strength, allocation, earnings, momentum and risk.</p>
+          <div className="conviction-values">
+            <DataRow label="Fair value" value={money(headline.fair_value)} subvalue={`${percent(headline.upside)} from market`} />
+            <DataRow label="Buy target" value={money(headline.buy_target)} subvalue={`${percent(analysis.buy_target.margin_of_safety)} safety margin`} />
+            <DataRow label="Bear case" value={money(headline.bear_value)} />
+            <DataRow label="Bull case" value={money(headline.bull_value)} />
+          </div>
+          <div className="conviction-foot">
+            <span>Forward PEG</span>
+            <strong>{analysis.valuation.growth_projection.peg_ratio == null ? "N/A" : analysis.valuation.growth_projection.peg_ratio.toFixed(2)}</strong>
+            <small>Target: {analysis.valuation.growth_projection.target_peg.toFixed(1)} or lower</small>
+          </div>
+        </aside>
       </section>
 
-      <section className="market-metrics-section">
-        <div className="market-metrics-heading">
-          <span>MARKET METRICS</span>
-          <h3>Valuation and growth at a glance</h3>
-          <p>Current price combined with the latest normalized annual filing.</p>
+      <section className="key-highlights">
+        <div className="key-highlights-heading">
+          <h3>Key highlights</h3>
+          <span>Latest annual filing and current delayed price</span>
         </div>
-        <div className="market-metrics-grid">
-          <MetricCell label="P / E" value={multiple(analysis.metrics.pe)} detail="current price / annual EPS" />
-          <MetricCell label="PEG" value={analysis.valuation.growth_projection.peg_ratio == null ? "N/A" : analysis.valuation.growth_projection.peg_ratio.toFixed(2)} detail={`${percent(analysis.valuation.growth_projection.average_annual_growth)} projected growth`} />
-          <MetricCell label="Revenue growth" value={percent(analysis.metrics.revenue_growth_yoy)} detail={`${percent(analysis.metrics.revenue_cagr)} historical CAGR`} tone={(analysis.metrics.revenue_growth_yoy ?? 0) >= 0 ? "positive" : "negative"} />
-          <MetricCell label="Income growth" value={percent(analysis.metrics.net_income_growth_yoy)} detail={`${percent(analysis.metrics.net_income_cagr)} historical CAGR`} tone={(analysis.metrics.net_income_growth_yoy ?? 0) >= 0 ? "positive" : "negative"} />
-          <MetricCell label="Price / book" value={multiple(analysis.metrics.price_to_book)} detail="market cap / shareholders' equity" />
+        <div className="key-highlights-grid">
+          <MetricCell label="Revenue" value={compactMoney(analysis.latest.revenue)} detail={`${percent(analysis.metrics.revenue_growth_yoy)} annual growth`} tone={(analysis.metrics.revenue_growth_yoy ?? 0) >= 0 ? "positive" : "negative"} />
+          <MetricCell label="Net income" value={compactMoney(analysis.latest.net_income)} detail={`${percent(analysis.metrics.net_income_growth_yoy)} annual growth`} tone={(analysis.metrics.net_income_growth_yoy ?? 0) >= 0 ? "positive" : "negative"} />
+          <MetricCell label="Free cash flow" value={compactMoney(analysis.latest.free_cash_flow)} detail={`${percent(analysis.metrics.fcf_growth_yoy)} annual growth`} tone={(analysis.metrics.fcf_growth_yoy ?? 0) >= 0 ? "positive" : "negative"} />
+          <MetricCell label="P / E" value={multiple(analysis.metrics.pe)} detail="Current price / annual EPS" />
+          <MetricCell label="Price / book" value={multiple(analysis.metrics.price_to_book)} detail="Market cap / book equity" />
         </div>
       </section>
-
-      <StockPriceChart ticker={analysis.company.ticker} />
 
       <section className="content-section">
         <SectionHeading title="Financial trajectory" detail="Annual SEC Company Facts, normalized to fiscal years" />

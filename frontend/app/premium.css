@@ -1,0 +1,390 @@
+/* Premium market-data skin. Carbon remains the single component foundation. */
+.terminal-shell[data-theme="dark"] {
+  color-scheme: dark;
+  --aplex-blue: #34d399;
+  --aplex-ink: #edf3f0;
+  --aplex-muted: #8d9a96;
+  --aplex-line: #202830;
+  --aplex-line-strong: #303a44;
+  --aplex-grid: #1b242b;
+  --aplex-surface: #0b1015;
+  --aplex-canvas: #080c10;
+  --aplex-panel: #0f151b;
+  --aplex-elevated: #141b22;
+  --aplex-hover: #18231f;
+  --aplex-positive: #39d99a;
+  --aplex-negative: #f27683;
+  --chart-1: #39d99a;
+  --chart-2: #6ec7b0;
+  --chart-3: #9dabc0;
+  --chart-4: #f27683;
+  --chart-5: #d8b56f;
+  --aplex-shadow: 0 20px 52px rgb(0 0 0 / 24%);
+}
+
+.terminal-shell[data-theme="light"] {
+  color-scheme: light;
+  --aplex-blue: #147a58;
+  --aplex-ink: #131a18;
+  --aplex-muted: #66716d;
+  --aplex-line: #d7ddda;
+  --aplex-line-strong: #bec8c3;
+  --aplex-grid: #e2e7e4;
+  --aplex-surface: #f3f5f4;
+  --aplex-canvas: #eef1ef;
+  --aplex-panel: #fafcfb;
+  --aplex-elevated: #f2f5f3;
+  --aplex-hover: #e7f1ec;
+  --aplex-positive: #147a58;
+  --aplex-negative: #b73e50;
+  --chart-1: #147a58;
+  --chart-2: #438b78;
+  --chart-3: #687b92;
+  --chart-4: #b73e50;
+  --chart-5: #8d6c2e;
+  --aplex-shadow: 0 20px 52px rgb(20 35 29 / 9%);
+}
+
+html,
+body { background: #080c10; }
+
+.terminal-shell {
+  min-height: 100dvh;
+  background: var(--aplex-canvas);
+  color: var(--aplex-ink);
+}
+
+.topbar {
+  height: 64px;
+  grid-template-columns: 188px minmax(340px, 620px) 1fr;
+  gap: 22px;
+  padding: 0 18px 0 0;
+  border-bottom: 1px solid var(--aplex-line);
+  background: color-mix(in srgb, var(--aplex-canvas) 94%, transparent);
+  color: var(--aplex-ink);
+  box-shadow: none;
+  backdrop-filter: blur(18px) saturate(120%);
+}
+
+.brand-lockup { height: 64px; gap: 10px; padding: 0 18px; font-size: 15px; }
+.brand-mark {
+  width: 29px;
+  height: 29px;
+  border: 1px solid color-mix(in srgb, var(--aplex-blue) 55%, var(--aplex-line));
+  border-radius: 50%;
+  background: var(--aplex-elevated);
+  color: var(--aplex-blue);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%);
+  font: 650 13px "IBM Plex Mono", monospace;
+}
+.brand-name { letter-spacing: -.025em; }
+.brand-name strong { font-weight: 650; }
+
+.search-module { display: block; align-self: center; }
+.search-module > label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.ticker-search {
+  height: 40px;
+  border: 1px solid var(--aplex-line);
+  border-radius: 10px;
+  background: var(--aplex-elevated);
+  overflow: visible;
+}
+.ticker-search:focus-within { border-color: var(--aplex-line-strong); box-shadow: 0 0 0 3px color-mix(in srgb, var(--aplex-blue) 16%, transparent); }
+.ticker-search .cds--text-input { height: 38px; min-height: 38px; border-radius: 10px 0 0 10px; background: transparent; color: var(--aplex-ink); }
+.ticker-search .cds--btn { min-height: 38px; height: 38px; border-radius: 0 8px 8px 0; background: var(--aplex-blue); color: #07110d; }
+.ticker-search .cds--btn:hover { background: color-mix(in srgb, var(--aplex-blue) 86%, #ffffff); }
+.search-results { top: 46px; border-color: var(--aplex-line-strong); border-radius: 12px; background: var(--aplex-panel); color: var(--aplex-ink); }
+.search-results button { background: var(--aplex-panel); color: var(--aplex-ink); border-color: var(--aplex-line); }
+.search-results button:hover,
+.search-results button.is-highlighted { background: var(--aplex-hover); box-shadow: inset 3px 0 0 var(--aplex-blue); }
+
+.topbar-status { color: var(--aplex-muted); }
+.topbar-status strong { color: var(--aplex-ink); }
+.theme-toggle { border-color: var(--aplex-line); border-radius: 9px; background: var(--aplex-elevated); color: var(--aplex-ink); }
+.theme-toggle:hover { background: var(--aplex-hover); }
+
+.sidebar {
+  top: 64px;
+  width: 188px;
+  padding: 12px 10px;
+  border-right: 1px solid var(--aplex-line);
+  background: color-mix(in srgb, var(--aplex-canvas) 96%, transparent);
+}
+.watchlist { padding: 8px 7px 16px; border-color: var(--aplex-line); }
+.watchlist > span { color: var(--aplex-muted); }
+.watchlist > div { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.watchlist button { border-color: var(--aplex-line); border-radius: 8px; background: var(--aplex-elevated); color: var(--aplex-muted); padding: 7px 4px; }
+.watchlist button:hover,
+.watchlist button.is-current { border-color: var(--aplex-blue); background: var(--aplex-hover); color: var(--aplex-blue); }
+.sidebar nav { gap: 4px; padding-top: 10px; }
+.nav-item { height: 40px; border-radius: 9px; color: var(--aplex-muted); }
+.nav-item:hover { background: var(--aplex-elevated); color: var(--aplex-ink); }
+.nav-item.active { background: var(--aplex-elevated); box-shadow: inset 2px 0 0 var(--aplex-blue); color: var(--aplex-ink); }
+.sidebar-foot { margin: auto 4px 0; border-color: var(--aplex-line); color: var(--aplex-muted); }
+
+.workspace { margin-left: 188px; padding-top: 64px; background: var(--aplex-canvas); }
+.company-header,
+.page-stack,
+.workspace > .cds--inline-notification { width: min(1540px, calc(100% - 44px)); margin-inline: auto; }
+.workspace > .cds--inline-notification { margin-top: 14px; }
+.page-stack { gap: 14px; padding: 14px 0 30px; }
+
+.company-header {
+  min-height: 170px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(330px, .52fr);
+  margin-top: 22px;
+  border: 1px solid var(--aplex-line);
+  border-radius: 14px;
+  background: var(--aplex-panel);
+  box-shadow: var(--aplex-shadow);
+}
+.company-identity { min-width: 0; display: flex; align-items: center; gap: 20px; padding: 24px 26px; }
+.company-avatar {
+  flex: 0 0 86px;
+  height: 86px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--aplex-line);
+  border-radius: 14px;
+  background: var(--aplex-elevated);
+  color: var(--aplex-ink);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 5%);
+  font: 650 25px "IBM Plex Mono", monospace;
+  letter-spacing: -.06em;
+}
+.company-overview { min-width: 0; }
+.company-title-row { gap: 10px; }
+.company-title-row h1 { max-width: 680px; overflow: hidden; margin: 0; color: var(--aplex-ink); font-size: clamp(22px, 2.2vw, 30px); text-overflow: ellipsis; white-space: nowrap; }
+.company-title-row > span { padding: 4px 7px; border-radius: 6px; background: var(--aplex-elevated); color: var(--aplex-muted); }
+.company-title-row .cds--tag { border-radius: 999px; }
+.company-overview > p { margin: 7px 0 12px; color: var(--aplex-muted); font-size: 11px; }
+.company-price-line { display: flex; align-items: baseline; gap: 12px; }
+.company-price-line strong { color: var(--aplex-ink); font: 34px "IBM Plex Mono", monospace; font-weight: 520; letter-spacing: -.055em; }
+.company-price-line span,
+.company-overview > small { color: var(--aplex-muted); font-size: 10px; }
+.company-overview > small { display: block; margin-top: 3px; }
+.company-snapshot { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-left: 1px solid var(--aplex-line); background: var(--aplex-elevated); }
+.company-snapshot > div { display: flex; flex-direction: column; justify-content: center; gap: 7px; padding: 18px 22px; border-right: 1px solid var(--aplex-line); border-bottom: 1px solid var(--aplex-line); }
+.company-snapshot > div:nth-child(even) { border-right: 0; }
+.company-snapshot > div:nth-child(n+3) { border-bottom: 0; }
+.company-snapshot span { color: var(--aplex-muted); font-size: 10px; }
+.company-snapshot strong { color: var(--aplex-ink); font: 14px "IBM Plex Mono", monospace; font-weight: 550; }
+
+.overview-primary-grid { display: grid; grid-template-columns: minmax(0, 1.78fr) minmax(280px, .72fr); gap: 14px; align-items: stretch; }
+.market-chart-section,
+.conviction-panel,
+.key-highlights,
+.content-section,
+.split-section > div,
+.split-section > form,
+.table-section,
+.valuation-summary,
+.peg-model,
+.buy-target-hero,
+.risk-list,
+.financials-intro,
+.financial-explorer-section {
+  border: 1px solid var(--aplex-line);
+  border-radius: 14px;
+  background: var(--aplex-panel);
+  box-shadow: 0 14px 40px rgb(0 0 0 / 10%);
+}
+.market-chart-section { min-width: 0; }
+.market-chart-heading { align-items: center; padding: 20px 22px 14px; }
+.market-chart-heading > div:first-child > span { color: var(--aplex-muted); }
+.market-chart-heading h3 { color: var(--aplex-ink); font-size: 18px; }
+.market-chart-heading p { color: var(--aplex-muted); }
+.range-selector { flex-wrap: nowrap; border-color: var(--aplex-line); border-radius: 9px; background: var(--aplex-elevated); }
+.range-selector button { min-width: 39px; min-height: 30px; border-radius: 7px; color: var(--aplex-muted); }
+.range-selector button:hover { background: var(--aplex-panel); color: var(--aplex-ink); }
+.range-selector button.active { background: var(--aplex-blue); color: #07110d; box-shadow: none; }
+.market-stat-row { margin: 0 22px; border-color: var(--aplex-line); border-radius: 10px; background: var(--aplex-elevated); }
+.market-stat-row > div { border-color: var(--aplex-line); }
+.market-stat-row span { color: var(--aplex-muted); }
+.market-stat-row strong { color: var(--aplex-ink); font-size: 14px; }
+.market-chart-canvas { padding: 3px 12px 0 0; }
+.market-chart-foot { padding: 9px 22px 15px; color: var(--aplex-muted); }
+.market-chart-foot a { color: var(--aplex-blue); }
+
+.conviction-panel { display: flex; flex-direction: column; padding: 22px; }
+.conviction-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.conviction-heading > div > span { color: var(--aplex-muted); font: 10px "IBM Plex Mono", monospace; letter-spacing: .08em; }
+.conviction-heading strong { display: block; margin-top: 4px; color: var(--aplex-ink); font: 48px "IBM Plex Mono", monospace; font-weight: 520; letter-spacing: -.07em; }
+.conviction-heading strong small { color: var(--aplex-muted); font-size: 14px; }
+.conviction-heading .cds--tag { margin: 1px 0 0; border-radius: 999px; }
+.conviction-panel > p { margin: 10px 0 18px; color: var(--aplex-muted); font-size: 11px; line-height: 1.55; }
+.conviction-values { border-top: 1px solid var(--aplex-line); }
+.conviction-values .data-row { min-height: 48px; border-color: var(--aplex-line); }
+.conviction-foot { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 4px 12px; margin-top: auto; padding: 16px; border: 1px solid var(--aplex-line); border-radius: 10px; background: var(--aplex-elevated); }
+.conviction-foot span,
+.conviction-foot small { color: var(--aplex-muted); }
+.conviction-foot span { font-size: 10px; }
+.conviction-foot strong { grid-row: 1 / 3; grid-column: 2; color: var(--aplex-ink); font: 24px "IBM Plex Mono", monospace; font-weight: 550; }
+.conviction-foot small { font-size: 9px; }
+
+.key-highlights { overflow: hidden; }
+.key-highlights-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 20px; padding: 17px 20px 13px; border-bottom: 1px solid var(--aplex-line); }
+.key-highlights-heading h3 { margin: 0; color: var(--aplex-ink); font-size: 14px; }
+.key-highlights-heading span { color: var(--aplex-muted); font-size: 10px; }
+.key-highlights-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.key-highlights-grid .metric-cell { min-width: 0; min-height: 105px; padding: 16px 18px; border: 0; border-right: 1px solid var(--aplex-line); border-radius: 0; background: transparent; }
+.key-highlights-grid .metric-cell:last-child { border-right: 0; }
+.key-highlights-grid .metric-cell > span { color: var(--aplex-muted); font-size: 10px; }
+.key-highlights-grid .metric-cell strong { color: var(--aplex-ink); font-size: 18px; }
+
+.content-section { padding: 23px 24px 19px; }
+.section-heading h3 { color: var(--aplex-ink); }
+.section-heading p { color: var(--aplex-muted); }
+.chart-frame { background: transparent; }
+.recharts-text { fill: var(--aplex-muted); }
+.recharts-legend-item-text { color: var(--aplex-muted) !important; }
+.split-section { gap: 14px; }
+.split-section > div,
+.split-section > form { padding: 23px 24px; }
+.split-section > :first-child { border-right: 1px solid var(--aplex-line); }
+.metric-table { border-color: var(--aplex-line-strong); }
+.data-row { border-color: var(--aplex-line); }
+.data-row span,
+.data-row span small { color: var(--aplex-muted); }
+.data-row strong { color: var(--aplex-ink); }
+.score-matrix { border-color: var(--aplex-line); }
+.score-matrix > div { border-color: var(--aplex-line); background: transparent; }
+.score-matrix span,
+.score-matrix small { color: var(--aplex-muted); }
+.score-matrix strong { color: var(--aplex-ink); }
+
+.thesis-strip { border: 1px solid var(--aplex-line); border-radius: 14px; background: var(--aplex-elevated); color: var(--aplex-ink); }
+.thesis-strip span,
+.thesis-strip p { color: var(--aplex-muted); }
+.table-section { border-color: var(--aplex-line); }
+.research-table { color: var(--aplex-ink); }
+.research-table th,
+.research-table td { border-color: var(--aplex-line); }
+.research-table thead th { background: var(--aplex-elevated); color: var(--aplex-muted); }
+.research-table tbody tr:hover,
+.research-table .target-row { background: var(--aplex-hover); }
+.research-table a,
+.risk-source-link { color: var(--aplex-blue); }
+.table-note,
+.body-copy,
+.risk-list article p,
+.research-empty p,
+.empty-state p,
+.research-empty small { color: var(--aplex-muted); }
+
+.financials-intro { padding: 23px 24px; }
+.financials-intro h2 { color: var(--aplex-ink); }
+.financials-intro p,
+.coverage-summary span,
+.coverage-summary small { color: var(--aplex-muted); }
+.coverage-summary { border-color: var(--aplex-line); }
+.financial-tabs { border-color: var(--aplex-line); background: var(--aplex-elevated); }
+.financial-tabs button,
+.series-controls button { color: var(--aplex-muted); }
+.financial-tabs button.active,
+.series-controls button.active { border-color: var(--aplex-line-strong); background: var(--aplex-panel); color: var(--aplex-ink); }
+.latest-series-grid,
+.latest-series-grid > div { border-color: var(--aplex-line); }
+
+.valuation-summary,
+.buy-target-hero { border-color: var(--aplex-line); }
+.valuation-summary > div,
+.buy-target-hero > div:not(.formula-sign),
+.buy-target-hero .formula-sign,
+.peg-score-grid,
+.peg-score-grid > div,
+.peg-projection-table { border-color: var(--aplex-line); }
+.valuation-summary .base,
+.peg-score-grid .peg-result,
+.peg-formula,
+.reverse-dcf { background: var(--aplex-elevated); }
+.peg-score-grid span,
+.peg-score-grid > div > small,
+.peg-score-grid strong small,
+.peg-formula > span,
+.peg-formula p,
+.reverse-dcf p { color: var(--aplex-muted); }
+.buy-target-hero .target-result { background: var(--aplex-elevated); color: var(--aplex-ink); }
+.buy-target-hero .target-result span { color: var(--aplex-muted); }
+.risk-list article { border-color: var(--aplex-line); }
+.research-empty button { border-color: var(--aplex-line); background: var(--aplex-elevated); color: var(--aplex-muted); }
+.research-empty code { background: var(--aplex-elevated); color: var(--aplex-ink); }
+
+.terminal-shell .cds--btn--primary { background: var(--aplex-blue); color: #07110d; }
+.terminal-shell .cds--btn--primary:hover { background: color-mix(in srgb, var(--aplex-blue) 86%, #ffffff); }
+.terminal-shell button:active { transform: translateY(1px); }
+.terminal-shell button:focus-visible,
+.terminal-shell input:focus-visible,
+.terminal-shell a:focus-visible { outline: 2px solid var(--aplex-blue); outline-offset: 2px; }
+
+.loading-state,
+.error-state { width: min(1540px, calc(100% - 44px)); margin: 22px auto 0; padding: 28px; border: 1px solid var(--aplex-line); border-radius: 14px; background: var(--aplex-panel); }
+.loading-heading p { color: var(--aplex-muted); }
+.skeleton-grid { border-color: var(--aplex-line); }
+.skeleton-cell { border-color: var(--aplex-line); }
+
+@media (max-width: 1220px) {
+  .topbar { grid-template-columns: 176px minmax(300px, 1fr) auto; }
+  .sidebar { width: 176px; }
+  .workspace { margin-left: 176px; }
+  .overview-primary-grid { grid-template-columns: minmax(0, 1fr) 300px; }
+  .company-header { grid-template-columns: minmax(0, 1fr) 320px; }
+  .key-highlights-grid { grid-template-columns: repeat(5, minmax(145px, 1fr)); overflow-x: auto; }
+}
+
+@media (max-width: 960px) {
+  .topbar { position: sticky; grid-template-columns: 1fr auto; height: auto; min-height: 62px; padding: 0 12px 10px; }
+  .brand-lockup { height: 58px; padding: 0 4px; }
+  .search-module { grid-column: 1 / -1; grid-row: 2; }
+  .topbar-status { grid-column: 2; grid-row: 1; }
+  .topbar-status > div { display: none; }
+  .ticker-search { width: 100%; }
+  .sidebar { position: static; width: auto; padding: 5px 8px; border-right: 0; border-bottom: 1px solid var(--aplex-line); }
+  .watchlist,
+  .sidebar-foot { display: none; }
+  .sidebar nav { display: flex; gap: 3px; padding: 0; overflow-x: auto; }
+  .nav-item { width: auto; min-width: max-content; padding: 0 12px; }
+  .nav-item.active { box-shadow: inset 0 -2px 0 var(--aplex-blue); }
+  .workspace { margin-left: 0; padding-top: 0; }
+  .company-header,
+  .page-stack,
+  .workspace > .cds--inline-notification { width: calc(100% - 24px); }
+  .company-header { grid-template-columns: 1fr; margin-top: 12px; }
+  .company-snapshot { border-top: 1px solid var(--aplex-line); border-left: 0; }
+  .overview-primary-grid { grid-template-columns: 1fr; }
+  .conviction-panel { min-height: 440px; }
+}
+
+@media (max-width: 640px) {
+  .company-identity { align-items: flex-start; gap: 14px; padding: 20px 17px; }
+  .company-avatar { flex-basis: 58px; height: 58px; font-size: 18px; }
+  .company-title-row { flex-wrap: wrap; }
+  .company-title-row h1 { width: 100%; font-size: 21px; white-space: normal; }
+  .company-price-line { flex-direction: column; gap: 1px; }
+  .company-price-line strong { font-size: 28px; }
+  .company-snapshot { grid-template-columns: 1fr; }
+  .company-snapshot > div { border-right: 0; border-bottom: 1px solid var(--aplex-line); }
+  .company-snapshot > div:nth-child(n+3) { border-bottom: 1px solid var(--aplex-line); }
+  .company-snapshot > div:last-child { border-bottom: 0; }
+  .market-chart-heading { align-items: flex-start; }
+  .range-selector { width: 100%; overflow-x: auto; }
+  .range-selector button { flex: 1 0 39px; }
+  .market-stat-row { grid-template-columns: 1fr 1fr; margin-inline: 14px; }
+  .market-stat-row > div { border-top: 1px solid var(--aplex-line); }
+  .market-stat-row > div:first-child,
+  .market-stat-row > div:nth-child(2) { border-top: 0; }
+  .market-stat-row > div:nth-child(even) { border-right: 0; }
+  .market-chart-canvas { margin-left: -12px; padding-right: 0; }
+  .key-highlights-heading { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .key-highlights-grid { grid-template-columns: 1fr; }
+  .key-highlights-grid .metric-cell { min-height: 92px; border-right: 0; border-bottom: 1px solid var(--aplex-line); }
+  .key-highlights-grid .metric-cell:last-child { border-bottom: 0; }
+  .split-section { grid-template-columns: 1fr; }
+  .split-section > :first-child { border-right: 0; }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .topbar,
+  .sidebar { background: var(--aplex-canvas); backdrop-filter: none; }
+}

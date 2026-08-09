@@ -12,7 +12,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const title = "AplexAnalysis | Equity Research Terminal";
   const description =
     "Search SEC-reporting companies and explore revenue, earnings, margins, cash flow, balance sheets and valuation.";
-  const socialImage = `${origin}/og-v2.png`;
+  const socialImage = `${origin}/og-premium.png`;
 
   return {
     title,
