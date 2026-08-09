@@ -19,6 +19,7 @@ import {
   buildFinancialExplorerData,
   FINANCIAL_GROUPS,
   financialMetricValue,
+  financialPeriodLabel,
   latestFinancialValue,
   type FinancialGroupKey,
   type FinancialMetricKey,
@@ -36,15 +37,23 @@ function formatRawValue(value: number | null, unit: "money" | "percent") {
   return unit === "percent" ? percent(value) : compactMoney(value);
 }
 
-export function FinancialExplorer({ periods }: { periods: FinancialPeriod[] }) {
+export function FinancialExplorer({
+  annualPeriods,
+  quarterlyPeriods,
+}: {
+  annualPeriods: FinancialPeriod[];
+  quarterlyPeriods: FinancialPeriod[];
+}) {
   const [groupKey, setGroupKey] = useState<FinancialGroupKey>("income");
+  const [frequency, setFrequency] = useState<"annual" | "quarterly">("annual");
   const [hiddenSeries, setHiddenSeries] = useState<FinancialMetricKey[]>([]);
+  const periods = frequency === "quarterly" ? quarterlyPeriods : annualPeriods;
   const group = FINANCIAL_GROUPS.find((item) => item.key === groupKey) ?? FINANCIAL_GROUPS[0];
   const availableSeries = useMemo(() => availableFinancialSeries(periods, group), [periods, group]);
   const data = useMemo(() => buildFinancialExplorerData(periods, group), [periods, group]);
   const visibleSeries = availableSeries.filter((series) => !hiddenSeries.includes(series.key));
 
-  useEffect(() => setHiddenSeries([]), [groupKey]);
+  useEffect(() => setHiddenSeries([]), [groupKey, frequency]);
 
   function toggleSeries(key: FinancialMetricKey) {
     const isHidden = hiddenSeries.includes(key);
@@ -76,7 +85,13 @@ export function FinancialExplorer({ periods }: { periods: FinancialPeriod[] }) {
           <h3>{group.label}</h3>
           <p>{group.description}</p>
         </div>
-        <span>{periods.length} annual periods</span>
+        <div className="frequency-control">
+          <div role="tablist" aria-label="Financial reporting frequency">
+            <button type="button" role="tab" aria-selected={frequency === "annual"} className={frequency === "annual" ? "active" : ""} onClick={() => setFrequency("annual")}>Annual</button>
+            <button type="button" role="tab" aria-selected={frequency === "quarterly"} className={frequency === "quarterly" ? "active" : ""} disabled={!quarterlyPeriods.length} onClick={() => setFrequency("quarterly")}>Quarterly</button>
+          </div>
+          <span>{periods.length} {frequency} periods</span>
+        </div>
       </div>
 
       {availableSeries.length ? (
@@ -102,13 +117,13 @@ export function FinancialExplorer({ periods }: { periods: FinancialPeriod[] }) {
           <div
             className="explorer-chart"
             role="img"
-            aria-label={`${group.label} history for ${periods[0]?.fiscal_year ?? "available years"} through ${periods.at(-1)?.fiscal_year ?? "latest year"}`}
+            aria-label={`${group.label} history from ${periods[0] ? financialPeriodLabel(periods[0]) : "the first available period"} through ${periods.at(-1) ? financialPeriodLabel(periods.at(-1)!) : "the latest period"}`}
           >
             <ResponsiveContainer width="100%" height={360}>
               <ComposedChart data={data} margin={{ top: 20, right: 18, bottom: 4, left: 2 }}>
                 <CartesianGrid stroke="var(--aplex-grid)" vertical={false} />
                 <XAxis
-                  dataKey="year"
+                  dataKey="label"
                   tickLine={false}
                   axisLine={{ stroke: "var(--aplex-line-strong)" }}
                   tick={{ fill: "var(--aplex-muted)" }}
@@ -171,7 +186,7 @@ export function FinancialExplorer({ periods }: { periods: FinancialPeriod[] }) {
                 <div key={series.key}>
                   <span>{series.label}</span>
                   <strong>{formatRawValue(latest?.value ?? null, group.unit)}</strong>
-                  <small>{latest ? `FY ${latest.year}` : "Not reported"}</small>
+                  <small>{latest ? latest.label : "Not reported"}</small>
                 </div>
               );
             })}
@@ -181,14 +196,14 @@ export function FinancialExplorer({ periods }: { periods: FinancialPeriod[] }) {
             <table className="research-table financial-explorer-table">
               <thead>
                 <tr>
-                  <th>Fiscal year</th>
+                  <th>{frequency === "quarterly" ? "Fiscal quarter" : "Fiscal year"}</th>
                   {availableSeries.map((series) => <th key={series.key}>{series.label}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {[...periods].reverse().map((period) => (
-                  <tr key={period.fiscal_year}>
-                    <th>{period.fiscal_year}</th>
+                  <tr key={`${period.fiscal_year}-${period.period_type}`}>
+                    <th>{financialPeriodLabel(period)}</th>
                     {availableSeries.map((series) => (
                       <td key={series.key}>
                         {formatRawValue(financialMetricValue(period, series.key), group.unit)}

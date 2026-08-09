@@ -564,6 +564,7 @@ function DataRow({ label, value, subvalue }: { label: string; value: string; sub
 }
 
 function FinancialsView({ analysis }: { analysis: Analysis }) {
+  const estimates = analysis.analyst_estimates;
   return (
     <div className="page-stack">
       <section className="financials-intro">
@@ -574,13 +575,58 @@ function FinancialsView({ analysis }: { analysis: Analysis }) {
         <div className="coverage-summary">
           <span>History</span>
           <strong>{analysis.financials[0]?.fiscal_year}-{analysis.financials.at(-1)?.fiscal_year}</strong>
-          <small>10-K, 20-F and 40-F support</small>
+          <small>{analysis.financials.length} annual and {analysis.quarterly_financials.length} quarterly periods</small>
         </div>
       </section>
       <section className="financial-explorer-section">
-        <FinancialExplorer periods={analysis.financials} />
-        <p className="table-note">Missing values are shown as N/A. Calculated rows retain formula and source provenance in the API.</p>
+        <FinancialExplorer annualPeriods={analysis.financials} quarterlyPeriods={analysis.quarterly_financials} />
+        <p className="table-note">Quarterly cash flow values are shown as stand-alone quarters. Q4 may be calculated as the fiscal-year total minus Q1, Q2 and Q3. Missing values are shown as N/A.</p>
       </section>
+      <section className="analyst-estimates-section">
+        <div className="analyst-estimates-heading">
+          <div>
+            <h3>Analyst EPS estimates</h3>
+            <p>Forward consensus ranges for upcoming quarters and fiscal years.</p>
+          </div>
+          <a href={estimates.source_url} target="_blank" rel="noreferrer">Source: {estimates.provider}</a>
+        </div>
+        {estimates.quarterly.length || estimates.annual.length ? (
+          <div className="estimate-tables-grid">
+            <EstimateTable title="Quarterly estimates" rows={estimates.quarterly} />
+            <EstimateTable title="Annual estimates" rows={estimates.annual} />
+          </div>
+        ) : (
+          <div className="estimate-empty"><strong>No consensus estimates available</strong><span>Nasdaq did not return forward EPS estimates for this security.</span></div>
+        )}
+        <p className="estimate-disclosure">{estimates.disclosure}</p>
+      </section>
+    </div>
+  );
+}
+
+function EstimateTable({ title, rows }: { title: string; rows: Analysis["analyst_estimates"]["quarterly"] }) {
+  const eps = (value: number | null) => value == null ? "N/A" : `$${value.toFixed(2)}`;
+  return (
+    <div className="estimate-table-block">
+      <h4>{title}</h4>
+      {rows.length ? (
+        <div className="estimate-table-scroll">
+          <table className="research-table estimate-table">
+            <thead><tr><th>Period</th><th>Consensus EPS</th><th>Range</th><th>Analysts</th><th>Revisions</th></tr></thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.period}>
+                  <th>{row.period}</th>
+                  <td>{eps(row.consensus_eps)}</td>
+                  <td>{eps(row.low_eps)} to {eps(row.high_eps)}</td>
+                  <td>{row.analyst_count ?? "N/A"}</td>
+                  <td><span className="revision-up">+{row.revisions_up ?? 0}</span> / <span className="revision-down">-{row.revisions_down ?? 0}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : <p className="estimate-table-empty">No estimates available.</p>}
     </div>
   );
 }

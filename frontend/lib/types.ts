@@ -43,6 +43,7 @@ export type SecuritySearchResult = {
 
 export type FinancialPeriod = {
   fiscal_year: number;
+  fiscal_quarter?: 1 | 2 | 3 | 4;
   period_type: string;
   period_end: string | null;
   filed_at: string | null;
@@ -124,6 +125,15 @@ export type Analysis = {
     upside: number;
   };
   financials: FinancialPeriod[];
+  quarterly_financials: FinancialPeriod[];
+  analyst_estimates: {
+    quarterly: AnalystEstimate[];
+    annual: AnalystEstimate[];
+    provider: string;
+    as_of: string | null;
+    source_url: string;
+    disclosure: string;
+  };
   latest: FinancialValues;
   metrics: Record<string, number | null>;
   valuation: {
@@ -181,6 +191,8 @@ export type Analysis = {
   }>;
   provenance: {
     financials: string;
+    quarterly_financials: string;
+    analyst_estimates: string;
     quote: string;
     risk_factors: string;
     comparables: string;
@@ -189,6 +201,16 @@ export type Analysis = {
     generated_at: string;
     warnings: string[];
   };
+};
+
+export type AnalystEstimate = {
+  period: string;
+  consensus_eps: number | null;
+  high_eps: number | null;
+  low_eps: number | null;
+  analyst_count: number | null;
+  revisions_up: number | null;
+  revisions_down: number | null;
 };
 
 export type DcfAssumptions = {

@@ -197,7 +197,8 @@ body { background: #080c10; }
 .buy-target-hero,
 .risk-list,
 .financials-intro,
-.financial-explorer-section {
+.financial-explorer-section,
+.analyst-estimates-section {
   border: 1px solid var(--aplex-line);
   border-radius: 14px;
   background: var(--aplex-panel);
@@ -405,6 +406,18 @@ body { background: #080c10; }
 .series-controls button.active { border-color: var(--aplex-line-strong); background: var(--aplex-panel); color: var(--aplex-ink); }
 .latest-series-grid,
 .latest-series-grid > div { border-color: var(--aplex-line); }
+.frequency-control > div { border-color: var(--aplex-line); background: var(--aplex-elevated); }
+.frequency-control button { color: var(--aplex-muted); }
+.frequency-control button.active { background: var(--aplex-panel); color: var(--aplex-ink); }
+.analyst-estimates-heading p,
+.estimate-disclosure,
+.estimate-empty span,
+.estimate-table-empty { color: var(--aplex-muted); }
+.analyst-estimates-heading a { color: var(--aplex-blue); }
+.estimate-tables-grid,
+.estimate-table-block:first-child,
+.estimate-disclosure,
+.estimate-empty { border-color: var(--aplex-line); }
 
 .valuation-summary,
 .buy-target-hero { border-color: var(--aplex-line); }

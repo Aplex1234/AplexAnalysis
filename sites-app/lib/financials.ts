@@ -3,6 +3,7 @@ export {
   buildFinancialExplorerData,
   FINANCIAL_GROUPS,
   financialMetricValue,
+  financialPeriodLabel,
   latestFinancialValue,
 } from "../../frontend/lib/financials";
 

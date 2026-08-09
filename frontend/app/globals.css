@@ -617,7 +617,8 @@ button, input { font: inherit; }
 .buy-target-hero,
 .risk-list,
 .financials-intro,
-.financial-explorer-section {
+.financial-explorer-section,
+.analyst-estimates-section {
   border: 1px solid var(--aplex-line);
   border-radius: 16px;
   background: var(--aplex-panel);
@@ -724,6 +725,13 @@ button, input { font: inherit; }
 .explorer-header h3 { margin: 0 0 5px; font-size: 19px; }
 .explorer-header p { margin: 0; color: var(--aplex-muted); font-size: 12px; }
 .explorer-header > span { color: var(--aplex-muted); font: 11px "IBM Plex Mono", monospace; }
+.frequency-control { display: grid; justify-items: end; gap: 6px; }
+.frequency-control > div { display: flex; gap: 3px; padding: 3px; border: 1px solid var(--aplex-line); border-radius: 9px; background: var(--aplex-elevated); }
+.frequency-control button { min-width: 76px; min-height: 30px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--aplex-muted); cursor: pointer; font-size: 11px; font-weight: 600; }
+.frequency-control button:hover:not(:disabled) { color: var(--aplex-ink); }
+.frequency-control button.active { background: var(--aplex-panel); color: var(--aplex-ink); box-shadow: 0 2px 8px rgb(31 50 81 / 7%); }
+.frequency-control button:disabled { cursor: not-allowed; opacity: .42; }
+.frequency-control > span { color: var(--aplex-muted); font: 10px "IBM Plex Mono", monospace; }
 
 .series-controls { display: flex; flex-wrap: wrap; gap: 7px; padding: 0 27px 7px; }
 .series-controls button {
@@ -764,6 +772,31 @@ button, input { font: inherit; }
 .financial-empty { min-height: 340px; display: grid; place-content: center; text-align: center; padding: 32px; }
 .financial-empty h4 { margin: 0 0 7px; }
 .financial-empty p { margin: 0; color: var(--aplex-muted); }
+
+.analyst-estimates-section { overflow: hidden; }
+.analyst-estimates-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; padding: 23px 27px 17px; }
+.analyst-estimates-heading h3 { margin: 0 0 5px; font-size: 19px; }
+.analyst-estimates-heading p { margin: 0; color: var(--aplex-muted); font-size: 12px; }
+.analyst-estimates-heading a { flex: 0 0 auto; color: var(--aplex-blue); font-size: 10px; text-decoration: none; }
+.analyst-estimates-heading a:hover { text-decoration: underline; }
+.estimate-tables-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid var(--aplex-line); }
+.estimate-table-block { min-width: 0; }
+.estimate-table-block:first-child { border-right: 1px solid var(--aplex-line); }
+.estimate-table-block h4 { margin: 0; padding: 14px 18px 11px; color: var(--aplex-ink); font-size: 12px; }
+.estimate-table-scroll { overflow-x: auto; }
+.estimate-table { min-width: 570px; }
+.estimate-table th,
+.estimate-table td { height: 42px; padding-inline: 11px; font-size: 10px; }
+.estimate-table th:first-child,
+.estimate-table td:first-child { padding-left: 18px; }
+.estimate-table tbody td { font-family: "IBM Plex Mono", monospace; }
+.revision-up { color: var(--aplex-positive); }
+.revision-down { color: var(--aplex-negative); }
+.estimate-disclosure { margin: 0; padding: 13px 27px 17px; border-top: 1px solid var(--aplex-line); color: var(--aplex-muted); font-size: 10px; }
+.estimate-empty { display: grid; gap: 5px; min-height: 140px; place-content: center; padding: 24px; border-top: 1px solid var(--aplex-line); text-align: center; }
+.estimate-empty span,
+.estimate-table-empty { color: var(--aplex-muted); font-size: 11px; }
+.estimate-table-empty { min-height: 120px; display: grid; place-content: center; margin: 0; }
 
 .valuation-summary,
 .buy-target-hero { border-color: var(--aplex-line); }
@@ -864,6 +897,9 @@ button, input { font: inherit; }
   .financial-tabs { padding: 8px; }
   .financial-tabs button { padding-inline: 11px; }
   .explorer-header { flex-direction: column; padding: 21px 18px 13px; }
+  .frequency-control { width: 100%; justify-items: stretch; }
+  .frequency-control > div { width: 100%; }
+  .frequency-control button { flex: 1; }
   .series-controls { flex-wrap: nowrap; overflow-x: auto; padding-inline: 18px; }
   .series-controls button { min-width: max-content; }
   .explorer-chart { margin-left: -8px; padding-right: 4px; }
@@ -874,6 +910,10 @@ button, input { font: inherit; }
   .latest-series-grid > div:nth-child(even) { border-right: 0; }
   .latest-series-grid > div:first-child,
   .latest-series-grid > div:nth-child(2) { border-top: 0; }
+  .analyst-estimates-heading { flex-direction: column; gap: 8px; padding: 21px 18px 15px; }
+  .estimate-tables-grid { grid-template-columns: 1fr; }
+  .estimate-table-block:first-child { border-right: 0; border-bottom: 1px solid var(--aplex-line); }
+  .estimate-disclosure { padding-inline: 18px; }
   .valuation-summary { grid-template-columns: 1fr; }
   .peg-score-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .market-chart-heading { align-items: flex-start; flex-direction: column; padding: 21px 18px 14px; }

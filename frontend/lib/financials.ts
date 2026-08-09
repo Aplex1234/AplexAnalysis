@@ -30,7 +30,7 @@ export const FINANCIAL_GROUPS: FinancialGroupDefinition[] = [
     key: "income",
     label: "Income statement",
     shortLabel: "Income",
-    description: "Revenue and earnings from annual SEC filings",
+    description: "Revenue and earnings from standardized SEC filings",
     unit: "money",
     series: [
       { key: "revenue", label: "Revenue", color: "var(--chart-1)", chart: "bar" },
@@ -69,7 +69,7 @@ export const FINANCIAL_GROUPS: FinancialGroupDefinition[] = [
     key: "balanceSheet",
     label: "Balance sheet",
     shortLabel: "Balance sheet",
-    description: "Cash, assets, obligations and shareholder capital at fiscal year-end",
+    description: "Cash, assets, obligations and shareholder capital at each period-end",
     unit: "money",
     series: [
       { key: "total_assets", label: "Total assets", color: "var(--chart-1)", chart: "bar" },
@@ -101,9 +101,18 @@ export function financialMetricValue(period: FinancialPeriod, key: FinancialMetr
   return value;
 }
 
+export function financialPeriodLabel(period: FinancialPeriod) {
+  return period.fiscal_quarter
+    ? `Q${period.fiscal_quarter} FY${period.fiscal_year}`
+    : `FY ${period.fiscal_year}`;
+}
+
 export function buildFinancialExplorerData(periods: FinancialPeriod[], group: FinancialGroupDefinition) {
   return periods.map((period) => {
-    const point: Record<string, number | null> & { year: number } = { year: period.fiscal_year };
+    const point: Record<string, number | string | null> & { year: number; label: string } = {
+      year: period.fiscal_year,
+      label: financialPeriodLabel(period),
+    };
     for (const series of group.series) {
       const rawValue = financialMetricValue(period, series.key);
       point[series.key] = rawValue == null
@@ -125,7 +134,7 @@ export function availableFinancialSeries(periods: FinancialPeriod[], group: Fina
 export function latestFinancialValue(periods: FinancialPeriod[], key: FinancialMetricKey) {
   for (let index = periods.length - 1; index >= 0; index -= 1) {
     const value = financialMetricValue(periods[index], key);
-    if (value != null) return { year: periods[index].fiscal_year, value };
+    if (value != null) return { year: periods[index].fiscal_year, label: financialPeriodLabel(periods[index]), value };
   }
   return null;
 }

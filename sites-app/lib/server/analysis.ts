@@ -4,6 +4,7 @@ import { calculatePegProjection } from "./peg";
 import { summarizeCompanyDescription } from "./company-description";
 import {
   normalizeCompanyFacts,
+  normalizeQuarterlyCompanyFacts,
   type FinancialValues,
   type NormalizedPeriod,
   type SecCompanyFacts,
@@ -38,6 +39,7 @@ type CompanyRisk = {
 type FinancialSource = {
   profile: CompanyProfile;
   periods: Period[];
+  quarterlyPeriods: Period[];
   filings: Filing[];
   filingRisks: CompanyRisk[];
 };
@@ -75,6 +77,23 @@ type NasdaqProfile = {
   sector: string | null;
   industry: string | null;
   description: string | null;
+};
+type AnalystEstimateRow = {
+  period: string;
+  consensus_eps: number | null;
+  high_eps: number | null;
+  low_eps: number | null;
+  analyst_count: number | null;
+  revisions_up: number | null;
+  revisions_down: number | null;
+};
+type AnalystEstimates = {
+  quarterly: AnalystEstimateRow[];
+  annual: AnalystEstimateRow[];
+  provider: string;
+  as_of: string | null;
+  source_url: string;
+  disclosure: string;
 };
 
 export type Assumptions = {
@@ -474,6 +493,48 @@ async function fetchNasdaqProfile(ticker: string): Promise<NasdaqProfile> {
   };
 }
 
+function nullableNumber(value: unknown) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+async function fetchNasdaqAnalystEstimates(ticker: string): Promise<AnalystEstimates> {
+  const response = await fetch(`https://api.nasdaq.com/api/analyst/${ticker.replaceAll("-", ".")}/earnings-forecast`, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (compatible; AplexAnalysis/0.1; financial research)",
+      Accept: "application/json, text/plain, */*",
+      Origin: "https://www.nasdaq.com",
+      Referer: "https://www.nasdaq.com/",
+    },
+  });
+  if (!response.ok) throw new Error(`Nasdaq analyst forecast request returned ${response.status}`);
+  const payload = (await response.json()) as {
+    data?: {
+      quarterlyForecast?: { asOf?: string | null; rows?: Array<Record<string, unknown>> };
+      yearlyForecast?: { asOf?: string | null; rows?: Array<Record<string, unknown>> };
+    };
+  };
+  const normalizeRows = (rows: Array<Record<string, unknown>> | undefined): AnalystEstimateRow[] =>
+    (rows ?? []).map((row) => ({
+      period: String(row.fiscalEnd ?? ""),
+      consensus_eps: nullableNumber(row.consensusEPSForecast),
+      high_eps: nullableNumber(row.highEPSForecast),
+      low_eps: nullableNumber(row.lowEPSForecast),
+      analyst_count: nullableNumber(row.noOfEstimates),
+      revisions_up: nullableNumber(row.up),
+      revisions_down: nullableNumber(row.down),
+    })).filter((row) => row.period);
+
+  return {
+    quarterly: normalizeRows(payload.data?.quarterlyForecast?.rows),
+    annual: normalizeRows(payload.data?.yearlyForecast?.rows),
+    provider: "Nasdaq analyst consensus",
+    as_of: payload.data?.quarterlyForecast?.asOf ?? payload.data?.yearlyForecast?.asOf ?? null,
+    source_url: `https://www.nasdaq.com/market-activity/stocks/${ticker.toLowerCase()}/earnings`,
+    disclosure: "Analyst EPS estimates are consensus forecasts, not company guidance.",
+  };
+}
+
 async function secData(ticker: string, includeRisks = true) {
   const headers = {
     "User-Agent": process.env.SEC_USER_AGENT ?? "AplexAnalysis/0.1 research@aplexanalysis.app",
@@ -495,6 +556,7 @@ async function secData(ticker: string, includeRisks = true) {
     filings?: { recent?: Record<string, string[]> };
   };
   const periods = normalizeCompanyFacts(facts);
+  const quarterlyPeriods = normalizeQuarterlyCompanyFacts(facts);
   if (periods.length < 3) throw new Error("SEC facts did not contain enough normalized annual periods");
   const recent = submissions.filings?.recent ?? {};
   const relevantFilings = (recent.form ?? [])
@@ -540,6 +602,7 @@ async function secData(ticker: string, includeRisks = true) {
       description_source_url: descriptionSourceUrl,
     },
     periods,
+    quarterlyPeriods,
     filings,
     filingRisks,
   };
@@ -700,7 +763,7 @@ export async function buildAnalysis(rawTicker: string, requested?: Partial<Assum
     if (!fallback) throw error;
     sourceMode = "fallback-snapshot";
     warnings.push(`Live SEC retrieval unavailable. Using bundled SEC-derived snapshot: ${error instanceof Error ? error.message : "Unknown error"}`);
-    financials = { profile: fallback.profile, periods: fallback.periods, filings: [], filingRisks: [] };
+    financials = { profile: fallback.profile, periods: fallback.periods, quarterlyPeriods: [], filings: [], filingRisks: [] };
   }
   let quote: Quote;
   try {
@@ -733,6 +796,14 @@ export async function buildAnalysis(rawTicker: string, requested?: Partial<Assum
   const valuation = calculateValuation(financials.periods, metrics, quote.price, assumptions, peers);
   const score = calculateScore(metrics, valuation);
   const buyTarget = calculateBuyTarget(metrics, valuation, score);
+  const analystEstimates = await fetchNasdaqAnalystEstimates(ticker).catch((): AnalystEstimates => ({
+    quarterly: [],
+    annual: [],
+    provider: "Nasdaq analyst consensus",
+    as_of: null,
+    source_url: `https://www.nasdaq.com/market-activity/stocks/${ticker.toLowerCase()}/earnings`,
+    disclosure: "Analyst EPS estimates are consensus forecasts, not company guidance.",
+  }));
   const latest = financials.periods.at(-1)!.values;
   const risks: CompanyRisk[] = [...financials.filingRisks];
   if (!risks.length && valuation.reverse_dcf.implied_revenue_growth > 0.15) risks.push({ severity: "high", title: "Demanding expectations", detail: "The current price embeds revenue growth above 15% in the reverse DCF." });
@@ -754,6 +825,8 @@ export async function buildAnalysis(rawTicker: string, requested?: Partial<Assum
       upside: valuation.upside_to_fair_value,
     },
     financials: financials.periods,
+    quarterly_financials: financials.quarterlyPeriods,
+    analyst_estimates: analystEstimates,
     latest,
     metrics,
     valuation,
@@ -764,6 +837,12 @@ export async function buildAnalysis(rawTicker: string, requested?: Partial<Assum
     risks,
     provenance: {
       financials: sourceMode,
+      quarterly_financials: financials.quarterlyPeriods.length
+        ? "SEC 10-Q facts normalized to stand-alone fiscal quarters"
+        : "Quarterly SEC facts unavailable",
+      analyst_estimates: analystEstimates.quarterly.length || analystEstimates.annual.length
+        ? analystEstimates.provider
+        : "Analyst estimates unavailable",
       quote: quote.provider,
       risk_factors: financials.filingRisks.length ? "latest annual filing" : "quantitative fallback",
       comparables: peerSet.methodology,

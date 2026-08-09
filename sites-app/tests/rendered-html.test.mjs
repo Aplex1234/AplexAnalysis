@@ -4,7 +4,7 @@ import test from "node:test";
 
 import { buildFinancialChartData, formatBillions } from "../../frontend/lib/chart.ts";
 import { buildFinancialExplorerData, FINANCIAL_GROUPS } from "../../frontend/lib/financials.ts";
-import { normalizeCompanyFacts } from "../lib/server/sec-normalizer.ts";
+import { normalizeCompanyFacts, normalizeQuarterlyCompanyFacts } from "../lib/server/sec-normalizer.ts";
 import { calculatePegProjection } from "../lib/server/peg.ts";
 import { extractRiskFactorHeadings } from "../lib/server/risk-factors.ts";
 import { summarizeCompanyDescription } from "../lib/server/company-description.ts";
@@ -257,6 +257,71 @@ test("normalizes Mastercard tag transitions and comparative annual facts", () =>
   assert.equal(chart.at(-1).total_assets, 54.157);
 });
 
+test("normalizes stand-alone SEC quarters and derives fourth-quarter cash flow", () => {
+  const duration = (fy, fp, start, end, val, form = "10-Q") => ({
+    form,
+    fp,
+    fy,
+    start,
+    end,
+    filed: form === "10-K" ? "2026-02-15" : `${end.slice(0, 7)}-25`,
+    val,
+    accn: `quarter-${fy}-${fp}`,
+  });
+  const instant = (fy, fp, end, val, form = "10-Q") => ({
+    form,
+    fp,
+    fy,
+    end,
+    filed: form === "10-K" ? "2026-02-15" : `${end.slice(0, 7)}-25`,
+    val,
+    accn: `instant-${fy}-${fp}`,
+  });
+  const payload = {
+    cik: 123456,
+    facts: { "us-gaap": {
+      Revenues: { units: { USD: [
+        duration(2025, "Q1", "2025-01-01", "2025-03-31", 100),
+        duration(2025, "Q2", "2025-04-01", "2025-06-30", 120),
+        duration(2025, "Q3", "2025-07-01", "2025-09-30", 140),
+        duration(2025, "FY", "2025-01-01", "2025-12-31", 520, "10-K"),
+      ] } },
+      NetIncomeLoss: { units: { USD: [
+        duration(2025, "Q1", "2025-01-01", "2025-03-31", 20),
+        duration(2025, "Q2", "2025-04-01", "2025-06-30", 24),
+        duration(2025, "Q3", "2025-07-01", "2025-09-30", 28),
+        duration(2025, "FY", "2025-01-01", "2025-12-31", 100, "10-K"),
+      ] } },
+      NetCashProvidedByUsedInOperatingActivities: { units: { USD: [
+        duration(2025, "Q1", "2025-01-01", "2025-03-31", 100),
+        duration(2025, "Q2", "2025-01-01", "2025-06-30", 250),
+        duration(2025, "Q3", "2025-01-01", "2025-09-30", 450),
+        duration(2025, "FY", "2025-01-01", "2025-12-31", 700, "10-K"),
+      ] } },
+      PaymentsToAcquirePropertyPlantAndEquipment: { units: { USD: [
+        duration(2025, "Q1", "2025-01-01", "2025-03-31", 10),
+        duration(2025, "Q2", "2025-01-01", "2025-06-30", 25),
+        duration(2025, "Q3", "2025-01-01", "2025-09-30", 45),
+        duration(2025, "FY", "2025-01-01", "2025-12-31", 70, "10-K"),
+      ] } },
+      Assets: { units: { USD: [
+        instant(2025, "Q1", "2025-03-31", 1_000),
+        instant(2025, "Q2", "2025-06-30", 1_050),
+        instant(2025, "Q3", "2025-09-30", 1_100),
+        instant(2025, "FY", "2025-12-31", 1_200, "10-K"),
+      ] } },
+    } },
+  };
+
+  const quarters = normalizeQuarterlyCompanyFacts(payload);
+  assert.deepEqual(quarters.map((period) => period.period_type), ["Q1", "Q2", "Q3", "Q4"]);
+  assert.deepEqual(quarters.map((period) => period.values.revenue), [100, 120, 140, 160]);
+  assert.deepEqual(quarters.map((period) => period.values.operating_cash_flow), [100, 150, 200, 250]);
+  assert.deepEqual(quarters.map((period) => period.values.capex), [10, 15, 20, 25]);
+  assert.deepEqual(quarters.map((period) => period.values.free_cash_flow), [90, 135, 180, 225]);
+  assert.deepEqual(quarters.map((period) => period.values.total_assets), [1_000, 1_050, 1_100, 1_200]);
+});
+
 test("searches the SEC security universe with stable listing identities", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (input, init) => {
@@ -310,6 +375,8 @@ test("serves a complete AAPL analysis through the hosted API", async () => {
   const payload = await response.json();
   assert.equal(payload.data.company.ticker, "AAPL");
   assert.ok(payload.data.financials.length >= 5);
+  assert.ok(Array.isArray(payload.data.quarterly_financials));
+  assert.ok(Array.isArray(payload.data.analyst_estimates.quarterly));
   assert.ok(Number.isFinite(payload.data.headline.fair_value));
   assert.ok(Number.isFinite(payload.data.metrics.pe));
   assert.ok(Number.isFinite(payload.data.metrics.price_to_book));
