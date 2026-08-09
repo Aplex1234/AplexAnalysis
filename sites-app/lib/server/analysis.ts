@@ -3,6 +3,15 @@ import { extractRiskFactorHeadings } from "./risk-factors.ts";
 import { calculatePegProjection } from "./peg.ts";
 import { summarizeCompanyDescription } from "./company-description.ts";
 import {
+  NASDAQ_PEER_SOURCE_LABEL,
+  NASDAQ_PEER_SOURCE_URL,
+  PEER_SELECTION_VERSION,
+  extractPeerBusinessContext,
+  rankPeerCandidates,
+  type PeerCandidateInput,
+  type RankedPeerCandidate,
+} from "./peer-selection.ts";
+import {
   NORMALIZATION_VERSION,
   SCORE_MODEL_VERSION,
   VALUATION_MODEL_VERSION,
@@ -67,6 +76,7 @@ export type ComparableCompany = {
   market_cap: number | null;
   revenue_growth: number | null;
   net_income_growth: number | null;
+  gross_margin: number | null;
   operating_margin: number | null;
   fcf_margin: number | null;
   roic: number | null;
@@ -76,12 +86,24 @@ export type ComparableCompany = {
   fcf_yield: number | null;
   fiscal_year: number;
   quote_as_of: string;
+  selection_reason: string;
+  selection_score: number;
+  selection_factors: string[];
+  selection_source: string;
+  selection_source_url: string;
 };
 type NasdaqProfile = {
   name: string | null;
   sector: string | null;
   industry: string | null;
   description: string | null;
+};
+type NasdaqScreenerRow = {
+  symbol?: string;
+  name?: string;
+  marketCap?: string;
+  sector?: string;
+  industry?: string;
 };
 type AnalystEstimateRow = {
   period: string;
@@ -104,6 +126,11 @@ export type AnalystEstimates = {
 export type PeerSet = {
   companies: ComparableCompany[];
   methodology: string;
+  source_provider: string;
+  source_url: string;
+  source_as_of: string;
+  candidates_considered: number;
+  selection_version: string;
 };
 
 export type AnalysisSources = {
@@ -139,8 +166,12 @@ const DEFAULT_ASSUMPTIONS: Assumptions = {
 };
 const RISK_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const COMPS_CACHE_TTL_MS = 15 * 60 * 1000;
+const NASDAQ_UNIVERSE_TTL_MS = 6 * 60 * 60 * 1000;
 const riskCache = new Map<string, { expiresAt: number; risks: CompanyRisk[] }>();
 const compsCache = new Map<string, { expiresAt: number; company: ComparableCompany }>();
+const profileCache = new Map<string, { expiresAt: number; profile: NasdaqProfile }>();
+const filingDocumentCache = new Map<string, { expiresAt: number; html: string }>();
+let nasdaqUniverseCache: { expiresAt: number; rows: NasdaqScreenerRow[]; asOf: string } | null = null;
 
 function period(
   fiscalYear: number,
@@ -262,22 +293,93 @@ const FALLBACK: Record<string, { profile: CompanyProfile; price: number; priceAs
   },
 };
 
-const CURATED_PEER_TICKERS: Record<string, string[]> = {
-  AAPL: ["MSFT", "DELL", "HPQ"],
-  AMZN: ["WMT", "COST", "EBAY"],
-  COST: ["WMT", "TGT", "BJ"],
-  GOOGL: ["META", "MSFT", "AMZN"],
-  JPM: ["BAC", "WFC", "C"],
-  KO: ["PEP", "KDP", "MNST"],
-  MA: ["V", "AXP", "PYPL"],
-  MCD: ["YUM", "SBUX", "QSR"],
-  META: ["GOOGL", "SNAP", "PINS"],
-  MSFT: ["ORCL", "GOOGL", "CRM"],
-  NFLX: ["DIS", "WBD", "PARA"],
-  NVDA: ["AMD", "AVGO", "QCOM"],
-  PEP: ["KO", "KDP", "MNST"],
-  TSLA: ["GM", "F", "RIVN"],
-  V: ["MA", "AXP", "PYPL"],
+type ReviewedPeer = {
+  ticker: string;
+  reason?: string;
+  evidenceLabel?: string;
+  evidenceUrl?: string;
+};
+
+const seeds = (...tickers: string[]): ReviewedPeer[] => tickers.map((ticker) => ({ ticker }));
+const REVIEWED_PEERS: Record<string, ReviewedPeer[]> = {
+  ADBE: [
+    {
+      ticker: "ADSK",
+      reason: "Selected because Adobe and Autodesk both sell subscription design and creation software used by professional creators, designers and enterprise teams.",
+      evidenceLabel: "Adobe annual filing and Nasdaq company profiles",
+      evidenceUrl: "https://www.sec.gov/Archives/edgar/data/796343/000079634326000003/adbe-20251128.htm",
+    },
+    {
+      ticker: "DOCU",
+      reason: "Selected because Adobe Acrobat and DocuSign both serve business document workflows, electronic agreements and digital-signature customers through subscription software.",
+      evidenceLabel: "Adobe annual filing and Nasdaq company profiles",
+      evidenceUrl: "https://www.sec.gov/Archives/edgar/data/796343/000079634326000003/adbe-20251128.htm",
+    },
+    {
+      ticker: "CRM",
+      reason: "Selected because Adobe Experience Cloud and Salesforce both sell enterprise software for customer engagement, personalized digital experiences and marketing workflows.",
+      evidenceLabel: "Adobe annual filing and Nasdaq company profiles",
+      evidenceUrl: "https://www.sec.gov/Archives/edgar/data/796343/000079634326000003/adbe-20251128.htm",
+    },
+  ],
+  AAPL: seeds("DELL", "HPQ", "MSFT"),
+  AMZN: seeds("WMT", "COST", "EBAY"),
+  COST: seeds("WMT", "TGT", "BJ"),
+  DELL: [
+    {
+      ticker: "HPQ",
+      reason: "Selected because HP identifies Dell as a primary competitor in personal systems, where both companies sell PCs, workstations and peripherals to consumer and commercial customers.",
+      evidenceLabel: "HP annual filing competitive disclosure",
+      evidenceUrl: "https://www.sec.gov/Archives/edgar/data/47217/000004721719000071/hp-103119x10k.htm",
+    },
+    {
+      ticker: "HPE",
+      reason: "Selected because HPE identifies Dell as a primary competitor in enterprise servers and data-center infrastructure, serving similar commercial and institutional customers.",
+      evidenceLabel: "HPE annual filing competitive disclosure",
+      evidenceUrl: "https://www.sec.gov/Archives/edgar/data/1645590/000164559026000021/fy25arsfiling.pdf",
+    },
+    {
+      ticker: "SMCI",
+      reason: "Selected because Supermicro identifies Dell among its principal competitors for servers and data-center systems.",
+      evidenceLabel: "Supermicro annual filing competitive disclosure",
+      evidenceUrl: "https://www.sec.gov/Archives/edgar/data/1375365/000137536525000027/smci-20250630.htm",
+    },
+  ],
+  GOOGL: seeds("META", "MSFT", "AMZN"),
+  HPE: seeds("DELL", "SMCI", "CSCO", "NTAP"),
+  HPQ: seeds("DELL", "AAPL", "HPE"),
+  JPM: seeds("BAC", "WFC", "C"),
+  KO: seeds("PEP", "KDP", "MNST"),
+  MA: seeds("V", "AXP", "PYPL"),
+  MCD: seeds("YUM", "SBUX", "QSR"),
+  META: seeds("GOOGL", "SNAP", "PINS"),
+  MSFT: seeds("ORCL", "GOOGL", "CRM"),
+  NFLX: seeds("DIS", "WBD", "PARA"),
+  NVDA: seeds("AMD", "AVGO", "QCOM"),
+  PANW: [
+    {
+      ticker: "CRWD",
+      reason: "Selected because Palo Alto Networks and CrowdStrike both sell subscription cybersecurity platforms that protect enterprise endpoints, cloud workloads and identity systems.",
+      evidenceLabel: "Palo Alto Networks annual filing and Nasdaq company profiles",
+      evidenceUrl: "https://www.sec.gov/Archives/edgar/data/1327567/000132756725000027/panw-20250731.htm",
+    },
+    {
+      ticker: "FTNT",
+      reason: "Selected because Palo Alto Networks and Fortinet both sell enterprise network-security platforms, including firewalls and secure access products, to similar organizations.",
+      evidenceLabel: "Palo Alto Networks annual filing and Nasdaq company profiles",
+      evidenceUrl: "https://www.sec.gov/Archives/edgar/data/1327567/000132756725000027/panw-20250731.htm",
+    },
+    {
+      ticker: "ZS",
+      reason: "Selected because Palo Alto Networks and Zscaler both provide cloud-delivered security and zero-trust access products through recurring enterprise subscriptions.",
+      evidenceLabel: "Palo Alto Networks annual filing and Nasdaq company profiles",
+      evidenceUrl: "https://www.sec.gov/Archives/edgar/data/1327567/000132756725000027/panw-20250731.htm",
+    },
+  ],
+  PEP: seeds("KO", "KDP", "MNST"),
+  SMCI: seeds("DELL", "HPE", "CSCO"),
+  TSLA: seeds("GM", "F", "RIVN"),
+  V: seeds("MA", "AXP", "PYPL"),
 };
 
 const clamp = (value: number, low: number, high: number) => Math.max(low, Math.min(high, value));
@@ -445,19 +547,27 @@ function calculateScore(
   return { overall, rating, categories, weights, formula: "Weighted arithmetic mean of eight category scores; valuation is the five-year forward PEG score" };
 }
 
+async function fetchFilingDocument(filing: Filing) {
+  const cached = filingDocumentCache.get(filing.source_url);
+  if (cached && cached.expiresAt > Date.now()) return cached.html;
+  const response = await fetch(filing.source_url, {
+    headers: {
+      "User-Agent": process.env.SEC_USER_AGENT ?? "AplexAnalysis/0.1 research@aplexanalysis.app",
+      Accept: "text/html,application/xhtml+xml",
+    },
+  });
+  if (!response.ok) throw new Error(`SEC filing request returned ${response.status}`);
+  const html = await response.text();
+  filingDocumentCache.set(filing.source_url, { expiresAt: Date.now() + RISK_CACHE_TTL_MS, html });
+  return html;
+}
+
 async function fetchFilingRisks(filing: Filing): Promise<CompanyRisk[]> {
   const cached = riskCache.get(filing.source_url);
   if (cached && cached.expiresAt > Date.now()) return cached.risks;
 
   try {
-    const response = await fetch(filing.source_url, {
-      headers: {
-        "User-Agent": process.env.SEC_USER_AGENT ?? "AplexAnalysis/0.1 research@aplexanalysis.app",
-        Accept: "text/html,application/xhtml+xml",
-      },
-    });
-    if (!response.ok) return [];
-    const titles = extractRiskFactorHeadings(await response.text(), filing.form, 8);
+    const titles = extractRiskFactorHeadings(await fetchFilingDocument(filing), filing.form, 8);
     const item = filing.form === "20-F" ? "Item 3.D" : filing.form === "10-K" ? "Item 1A" : "Risk Factors section";
     const risks: CompanyRisk[] = titles.map((title) => ({
       severity: "filed",
@@ -498,6 +608,9 @@ function calculateBuyTarget(
 }
 
 async function fetchNasdaqProfile(ticker: string): Promise<NasdaqProfile> {
+  const normalizedTicker = ticker.toUpperCase();
+  const cached = profileCache.get(normalizedTicker);
+  if (cached && cached.expiresAt > Date.now()) return cached.profile;
   const response = await fetch(`https://api.nasdaq.com/api/company/${ticker.replaceAll("-", ".")}/company-profile`, {
     headers: {
       "User-Agent": "Mozilla/5.0 (compatible; AplexAnalysis/0.1; financial research)",
@@ -510,12 +623,14 @@ async function fetchNasdaqProfile(ticker: string): Promise<NasdaqProfile> {
   const payload = (await response.json()) as {
     data?: Record<string, { value?: string | null }>;
   };
-  return {
+  const profile = {
     name: payload.data?.CompanyName?.value ?? null,
     sector: payload.data?.Sector?.value ?? null,
     industry: payload.data?.Industry?.value ?? null,
     description: payload.data?.CompanyDescription?.value ?? null,
   };
+  profileCache.set(normalizedTicker, { expiresAt: Date.now() + NASDAQ_UNIVERSE_TTL_MS, profile });
+  return profile;
 }
 
 function nullableNumber(value: unknown) {
@@ -654,22 +769,28 @@ export async function fetchFinancialSource(ticker: string, includeRisks = true):
   };
 }
 
-function cleanedCompanyName(name: string) {
+function cleanedScreenerName(name: string) {
   return name
-    .replace(/\b(class [a-z]|common stock|ordinary shares?|american depositary shares?)\b/gi, "")
+    .replace(/\b(class [a-z]|common stock|ordinary shares?|american depositary shares?|depositary shares?)\b/gi, "")
     .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
+    .trim();
 }
 
-async function findSectorPeers(
-  ticker: string,
-  companyName: string,
-  sector: string | null,
-  marketCap: number | null,
-) {
-  if (!sector) return [];
-  const params = new URLSearchParams({ tableonly: "true", limit: "1200", offset: "0", sector });
+function isOperatingCommonStock(name: string) {
+  return !/\b(preferred|preference|warrant|right|unit|note|bond|debenture|mandatory convertible|beneficial interest)\b/i.test(name);
+}
+
+function issuerNameKey(name: string) {
+  return cleanedScreenerName(name)
+    .toLowerCase()
+    .replace(/\b(incorporated|inc|corporation|corp|company|co|limited|ltd|plc)\b/g, "")
+    .replace(/[^a-z0-9]+/g, "")
+    .trim();
+}
+
+async function fetchNasdaqStockUniverse() {
+  if (nasdaqUniverseCache && nasdaqUniverseCache.expiresAt > Date.now()) return nasdaqUniverseCache;
+  const params = new URLSearchParams({ tableonly: "false", limit: "25", offset: "0", download: "true" });
   const response = await fetch(`https://api.nasdaq.com/api/screener/stocks?${params}`, {
     headers: {
       "User-Agent": "Mozilla/5.0 (compatible; AplexAnalysis/0.1; financial research)",
@@ -678,40 +799,133 @@ async function findSectorPeers(
       Referer: "https://www.nasdaq.com/",
     },
   });
-  if (!response.ok) return [];
+  if (!response.ok) throw new Error(`Nasdaq stock screener request returned ${response.status}`);
   const payload = (await response.json()) as {
-    data?: { table?: { rows?: Array<{ symbol?: string; name?: string; marketCap?: string }> } };
+    data?: { asOf?: string; rows?: NasdaqScreenerRow[] };
   };
-  const targetName = cleanedCompanyName(companyName);
-  return (payload.data?.table?.rows ?? [])
-    .map((row) => ({
-      ticker: String(row.symbol ?? "").toUpperCase(),
-      name: String(row.name ?? ""),
-      marketCap: Number(String(row.marketCap ?? "").replaceAll(",", "")),
-    }))
-    .filter((row) =>
-      row.ticker !== ticker
-      && /^[A-Z][A-Z0-9.-]{0,9}$/.test(row.ticker)
-      && Number.isFinite(row.marketCap)
-      && row.marketCap > 0
-      && cleanedCompanyName(row.name) !== targetName,
-    )
-    .sort((a, b) => {
-      if (!marketCap || marketCap <= 0) return b.marketCap - a.marketCap;
-      return Math.abs(Math.log(a.marketCap / marketCap)) - Math.abs(Math.log(b.marketCap / marketCap));
-    })
-    .slice(0, 8)
-    .map((row) => row.ticker);
+  const result = {
+    rows: payload.data?.rows ?? [],
+    asOf: payload.data?.asOf ?? new Date().toISOString(),
+    expiresAt: Date.now() + NASDAQ_UNIVERSE_TTL_MS,
+  };
+  nasdaqUniverseCache = result;
+  return result;
 }
 
-async function buildComparableCompany(ticker: string): Promise<ComparableCompany> {
-  const cached = compsCache.get(ticker);
-  if (cached && cached.expiresAt > Date.now()) return cached.company;
+async function findIndustryPeers(
+  ticker: string,
+  targetProfile: CompanyProfile,
+  marketCap: number | null,
+  filings: Filing[] = [],
+) {
+  const universe = await fetchNasdaqStockUniverse();
+  const annualFiling = filings.find((filing) => ["10-K", "20-F", "40-F"].includes(filing.form));
+  const filingContext = annualFiling
+    ? await fetchFilingDocument(annualFiling).then(extractPeerBusinessContext).catch(() => "")
+    : "";
+  const reviewed = REVIEWED_PEERS[ticker] ?? [];
+  const reviewedByTicker = new Map(reviewed.map((peer) => [peer.ticker, peer]));
+  const targetIndustry = targetProfile.industry?.toLowerCase() ?? "";
+  const targetSector = targetProfile.sector?.toLowerCase() ?? "";
+  const pool = new Map<string, PeerCandidateInput>();
+  for (const row of universe.rows) {
+    const symbol = String(row.symbol ?? "").toUpperCase();
+    const rawName = String(row.name ?? symbol);
+    const industry = String(row.industry ?? "").trim() || null;
+    const sector = String(row.sector ?? "").trim() || null;
+    const candidateCap = Number(String(row.marketCap ?? "").replaceAll(",", ""));
+    if (!/^[A-Z][A-Z0-9.-]{0,9}$/.test(symbol) || symbol === ticker || !isOperatingCommonStock(rawName) || !Number.isFinite(candidateCap) || candidateCap <= 0) continue;
+    const sameIndustry = Boolean(targetIndustry && industry?.toLowerCase() === targetIndustry);
+    const sameSector = Boolean(targetSector && sector?.toLowerCase() === targetSector);
+    if (!sameIndustry && !sameSector && !reviewedByTicker.has(symbol)) continue;
+    const evidence = reviewedByTicker.get(symbol);
+    pool.set(symbol, {
+      ticker: symbol,
+      name: cleanedScreenerName(rawName),
+      sector,
+      industry,
+      marketCap: candidateCap,
+      reviewedReason: evidence?.reason ?? null,
+      evidenceLabel: evidence?.evidenceLabel ?? null,
+      evidenceUrl: evidence?.evidenceUrl ?? null,
+    });
+  }
+  for (const evidence of reviewed) {
+    if (!pool.has(evidence.ticker)) {
+      pool.set(evidence.ticker, {
+        ticker: evidence.ticker,
+        name: evidence.ticker,
+        sector: null,
+        industry: null,
+        marketCap: null,
+        reviewedReason: evidence.reason ?? null,
+        evidenceLabel: evidence.evidenceLabel ?? null,
+        evidenceUrl: evidence.evidenceUrl ?? null,
+      });
+    }
+  }
+  const target = {
+    ticker,
+    name: targetProfile.name,
+    sector: targetProfile.sector,
+    industry: targetProfile.industry,
+    marketCap,
+    description: [targetProfile.description, filingContext].filter(Boolean).join(" "),
+    primaryDescription: targetProfile.description,
+  };
+  const initial = rankPeerCandidates(target, [...pool.values()]);
+  const shortlistTickers = new Set([
+    ...reviewed.map((peer) => peer.ticker),
+    ...initial.slice(0, 28).map((peer) => peer.ticker),
+  ]);
+  const enriched = await Promise.all([...shortlistTickers].map(async (candidateTicker) => {
+    const candidate = pool.get(candidateTicker)!;
+    const profile = await fetchNasdaqProfile(candidateTicker).catch(() => null);
+    return {
+      ...candidate,
+      name: profile?.name ?? candidate.name,
+      sector: profile?.sector ?? candidate.sector,
+      industry: profile?.industry ?? candidate.industry,
+      description: profile?.description ?? null,
+    };
+  }));
+  const sourceProvider = filingContext && annualFiling
+    ? `${NASDAQ_PEER_SOURCE_LABEL} plus ${targetProfile.name}'s latest annual filing`
+    : NASDAQ_PEER_SOURCE_LABEL;
+  const sourceUrl = filingContext && annualFiling ? annualFiling.source_url : NASDAQ_PEER_SOURCE_URL;
+  const ranked = rankPeerCandidates(target, enriched).map((candidate) => candidate.reviewedReason ? candidate : ({
+    ...candidate,
+    sourceLabel: sourceProvider,
+    sourceUrl,
+  }));
+  return {
+    ranked,
+    candidatesConsidered: pool.size,
+    sourceAsOf: universe.asOf,
+    sourceProvider,
+    sourceUrl,
+  };
+}
 
-  const [financials, quote] = await Promise.all([fetchFinancialSource(ticker, false), fetchQuote(ticker)]);
+function applyPeerSelection(company: ComparableCompany, candidate: RankedPeerCandidate): ComparableCompany {
+  return {
+    ...company,
+    selection_reason: candidate.selectionReason,
+    selection_score: candidate.selectionScore,
+    selection_factors: candidate.selectionFactors,
+    selection_source: candidate.sourceLabel,
+    selection_source_url: candidate.sourceUrl,
+  };
+}
+
+async function buildComparableCompany(candidate: RankedPeerCandidate): Promise<ComparableCompany> {
+  const cached = compsCache.get(candidate.ticker);
+  if (cached && cached.expiresAt > Date.now()) return applyPeerSelection(cached.company, candidate);
+
+  const [financials, quote] = await Promise.all([fetchFinancialSource(candidate.ticker, false), fetchQuote(candidate.ticker)]);
   const metrics = calculateMetrics(financials.periods, quote.price, quote.market_cap);
   const company: ComparableCompany = {
-    ticker,
+    ticker: candidate.ticker,
     name: financials.profile.name,
     sector: financials.profile.sector,
     industry: financials.profile.industry,
@@ -719,6 +933,7 @@ async function buildComparableCompany(ticker: string): Promise<ComparableCompany
     market_cap: metrics.market_cap,
     revenue_growth: metrics.revenue_growth_yoy,
     net_income_growth: metrics.net_income_growth_yoy,
+    gross_margin: metrics.gross_margin,
     operating_margin: metrics.operating_margin,
     fcf_margin: metrics.fcf_margin,
     roic: metrics.roic,
@@ -728,29 +943,46 @@ async function buildComparableCompany(ticker: string): Promise<ComparableCompany
     fcf_yield: metrics.fcf_yield,
     fiscal_year: financials.periods.at(-1)!.fiscal_year,
     quote_as_of: quote.as_of,
+    selection_reason: candidate.selectionReason,
+    selection_score: candidate.selectionScore,
+    selection_factors: candidate.selectionFactors,
+    selection_source: candidate.sourceLabel,
+    selection_source_url: candidate.sourceUrl,
   };
-  compsCache.set(ticker, { expiresAt: Date.now() + COMPS_CACHE_TTL_MS, company });
+  compsCache.set(candidate.ticker, { expiresAt: Date.now() + COMPS_CACHE_TTL_MS, company });
   return company;
 }
 
 export async function fetchComparableCompanies(
   ticker: string,
-  companyName: string,
-  sector: string | null,
+  profile: CompanyProfile,
   marketCap: number | null,
+  filings: Filing[] = [],
 ) {
-  const curated = CURATED_PEER_TICKERS[ticker];
-  const candidates = curated ?? await findSectorPeers(ticker, companyName, sector, marketCap);
-  const results = await Promise.allSettled(candidates.slice(0, curated ? 3 : 5).map(buildComparableCompany));
+  const candidateSet = await findIndustryPeers(ticker, profile, marketCap, filings);
+  const reviewed = candidateSet.ranked.filter((candidate) => Boolean(candidate.reviewedReason));
+  const ordered = [...reviewed, ...candidateSet.ranked.filter((candidate) => !candidate.reviewedReason)];
+  const desiredCount = reviewed.length >= 3 ? Math.min(reviewed.length, 4) : 4;
+  const results = await Promise.allSettled(ordered.slice(0, 8).map(buildComparableCompany));
+  const seenIssuers = new Set<string>();
   const companies = results
     .filter((result): result is PromiseFulfilledResult<ComparableCompany> => result.status === "fulfilled")
     .map((result) => result.value)
-    .slice(0, 3);
+    .filter((company) => {
+      const key = issuerNameKey(company.name);
+      if (!key || seenIssuers.has(key)) return false;
+      seenIssuers.add(key);
+      return true;
+    })
+    .slice(0, desiredCount);
   return {
     companies,
-    methodology: curated
-      ? "Selected operating peers with metrics recalculated from current SEC annual facts and delayed Nasdaq prices"
-      : "Closest available Nasdaq sector peers by market capitalization, with metrics recalculated from SEC annual facts and delayed Nasdaq prices",
+    methodology: "Industry-first peer selection using Nasdaq classifications and company profiles, with reviewed SEC competitive evidence where available. Metrics are recalculated from current SEC annual facts and delayed Nasdaq prices.",
+    source_provider: candidateSet.sourceProvider,
+    source_url: candidateSet.sourceUrl,
+    source_as_of: candidateSet.sourceAsOf,
+    candidates_considered: candidateSet.candidatesConsidered,
+    selection_version: PEER_SELECTION_VERSION,
   };
 }
 
@@ -843,12 +1075,17 @@ export async function buildAnalysis(
   const metrics = calculateMetrics(financials.periods, quote.price, quote.market_cap);
   const peerSet = sources.peerSet ?? await fetchComparableCompanies(
       ticker,
-      financials.profile.name,
-      financials.profile.sector,
+      financials.profile,
       metrics.market_cap,
+      financials.filings,
     ).catch(() => ({
       companies: [] as ComparableCompany[],
       methodology: "Comparable-company retrieval was unavailable for this request",
+      source_provider: "Unavailable",
+      source_url: NASDAQ_PEER_SOURCE_URL,
+      source_as_of: new Date().toISOString(),
+      candidates_considered: 0,
+      selection_version: PEER_SELECTION_VERSION,
     }));
   const peers = peerSet.companies;
   const valuation = calculateValuation(financials.periods, metrics, quote.price, assumptions, peers);
@@ -891,6 +1128,14 @@ export async function buildAnalysis(
     buy_target: buyTarget,
     score,
     comps: peers,
+    peer_selection: {
+      methodology: peerSet.methodology,
+      source_provider: peerSet.source_provider,
+      source_url: peerSet.source_url,
+      source_as_of: peerSet.source_as_of,
+      candidates_considered: peerSet.candidates_considered,
+      selection_version: peerSet.selection_version,
+    },
     filings: financials.filings,
     risks,
     provenance: {

@@ -8,6 +8,7 @@ import type {
 } from "./analysis.ts";
 import {
   ANALYSIS_SCHEMA_VERSION,
+  COMPONENT_SOURCE_VERSIONS,
   NORMALIZATION_VERSION,
   SCORE_MODEL_VERSION,
   VALUATION_MODEL_VERSION,
@@ -68,6 +69,7 @@ const CACHE_SCHEMA_SQL = [
     normalization_version TEXT DEFAULT 'legacy' NOT NULL,
     valuation_model_version TEXT DEFAULT 'legacy' NOT NULL,
     score_model_version TEXT DEFAULT 'legacy' NOT NULL,
+    component_source_versions_json TEXT DEFAULT '{}' NOT NULL,
     generated_at TEXT NOT NULL, fresh_until TEXT NOT NULL, refresh_started_at TEXT,
     last_refresh_error TEXT, last_successful_refresh TEXT, json_bytes INTEGER DEFAULT 0 NOT NULL,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL
@@ -97,6 +99,24 @@ const CACHE_SCHEMA_SQL = [
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS idx_cache_refresh_schedule_due ON cache_refresh_schedule (next_refresh_at, priority, view_count)`,
+  `CREATE TABLE IF NOT EXISTS peer_selection_runs (
+    id TEXT PRIMARY KEY NOT NULL,
+    target_listing_id TEXT NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+    source_provider TEXT NOT NULL, source_url TEXT NOT NULL, source_as_of TEXT NOT NULL,
+    selection_version TEXT NOT NULL, target_sector TEXT, target_industry TEXT,
+    candidate_count INTEGER NOT NULL, selected_count INTEGER NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_peer_selection_runs_target_created_at ON peer_selection_runs (target_listing_id, created_at)`,
+  `CREATE TABLE IF NOT EXISTS peer_selections (
+    run_id TEXT NOT NULL REFERENCES peer_selection_runs(id) ON DELETE CASCADE,
+    peer_ticker TEXT NOT NULL, peer_name TEXT NOT NULL, rank INTEGER NOT NULL,
+    score_basis_points INTEGER NOT NULL, reason TEXT NOT NULL, factors_json TEXT NOT NULL,
+    source_label TEXT NOT NULL, source_url TEXT NOT NULL, market_cap INTEGER,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    PRIMARY KEY (run_id, peer_ticker)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_peer_selections_peer_ticker ON peer_selections (peer_ticker)`,
   `PRAGMA optimize`,
 ];
 
@@ -109,6 +129,7 @@ const LEGACY_COLUMNS: Array<[string, string, string]> = [
   ["analysis_cache", "normalization_version", "TEXT NOT NULL DEFAULT 'legacy'"],
   ["analysis_cache", "valuation_model_version", "TEXT NOT NULL DEFAULT 'legacy'"],
   ["analysis_cache", "score_model_version", "TEXT NOT NULL DEFAULT 'legacy'"],
+  ["analysis_cache", "component_source_versions_json", "TEXT NOT NULL DEFAULT '{}'"],
   ["analysis_cache", "last_successful_refresh", "TEXT"],
   ["analysis_cache", "json_bytes", "INTEGER NOT NULL DEFAULT 0"],
 ];
@@ -230,6 +251,7 @@ type CacheRow = {
   normalization_version?: string;
   valuation_model_version?: string;
   score_model_version?: string;
+  component_source_versions_json?: string;
   generated_at: string;
   fresh_until: string;
   json_bytes?: number;
@@ -259,11 +281,18 @@ export function parseCachedAnalysisRow(row: CacheRow, now = Date.now()): CachedA
   }
 }
 
-export function isAnalysisCacheCompatible(row: Pick<CacheRow, "schema_version" | "normalization_version" | "valuation_model_version" | "score_model_version">) {
+export function isAnalysisCacheCompatible(row: Pick<CacheRow, "schema_version" | "normalization_version" | "valuation_model_version" | "score_model_version" | "component_source_versions_json">) {
+  let componentVersions: Record<string, unknown> = {};
+  try {
+    componentVersions = JSON.parse(row.component_source_versions_json ?? "{}");
+  } catch {
+    return false;
+  }
   return row.schema_version === ANALYSIS_SCHEMA_VERSION
     && row.normalization_version === NORMALIZATION_VERSION
     && row.valuation_model_version === VALUATION_MODEL_VERSION
-    && row.score_model_version === SCORE_MODEL_VERSION;
+    && row.score_model_version === SCORE_MODEL_VERSION
+    && Object.entries(COMPONENT_SOURCE_VERSIONS).every(([component, version]) => componentVersions[component] === version);
 }
 
 export async function readCachedAnalysis(ticker: string): Promise<CachedAnalysis | null> {
@@ -273,7 +302,7 @@ export async function readCachedAnalysis(ticker: string): Promise<CachedAnalysis
   const normalizedTicker = ticker.trim().toUpperCase();
   const row = await db.prepare(`
     SELECT ac.listing_id, ac.payload_json, ac.schema_version, ac.normalization_version,
-      ac.valuation_model_version, ac.score_model_version, ac.generated_at,
+      ac.valuation_model_version, ac.score_model_version, ac.component_source_versions_json, ac.generated_at,
       ac.fresh_until, ac.json_bytes
     FROM analysis_cache ac INNER JOIN listings l ON l.id = ac.listing_id
     WHERE l.ticker = ? COLLATE NOCASE
@@ -312,19 +341,20 @@ export async function writeAnalysisSnapshot(analysis: Analysis, now = new Date()
   await db.prepare(`
     INSERT INTO analysis_cache (
       listing_id, payload_json, schema_version, normalization_version,
-      valuation_model_version, score_model_version, generated_at, fresh_until,
+      valuation_model_version, score_model_version, component_source_versions_json, generated_at, fresh_until,
       refresh_started_at, last_refresh_error, last_successful_refresh, json_bytes, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)
     ON CONFLICT(listing_id) DO UPDATE SET payload_json=excluded.payload_json,
       schema_version=excluded.schema_version, normalization_version=excluded.normalization_version,
       valuation_model_version=excluded.valuation_model_version, score_model_version=excluded.score_model_version,
+      component_source_versions_json=excluded.component_source_versions_json,
       generated_at=excluded.generated_at, fresh_until=excluded.fresh_until,
       refresh_started_at=NULL, last_refresh_error=NULL,
       last_successful_refresh=excluded.last_successful_refresh,
       json_bytes=excluded.json_bytes, updated_at=excluded.updated_at
   `).bind(
     identity.listingId, payloadJson, ANALYSIS_SCHEMA_VERSION, NORMALIZATION_VERSION,
-    VALUATION_MODEL_VERSION, SCORE_MODEL_VERSION, generatedAt, freshUntil,
+    VALUATION_MODEL_VERSION, SCORE_MODEL_VERSION, JSON.stringify(COMPONENT_SOURCE_VERSIONS), generatedAt, freshUntil,
     timestamp, jsonBytes, timestamp,
   ).run();
   await recordEvent(db, { listingId: identity.listingId, ticker: identity.ticker, component: "analysis", outcome: "refresh_success", durationMs: Date.now() - startedAt, jsonBytes });
@@ -542,6 +572,68 @@ export async function writeComponentCache<T>(
   `).bind(identity.listingId, component, payloadJson, provider, sourceVersion, timestamp, freshUntil, timestamp, jsonBytes, timestamp).run();
   await recordEvent(db, { listingId: identity.listingId, ticker: identity.ticker, component, outcome: "refresh_success", durationMs: Date.now() - refreshStartedAt, jsonBytes, provider });
   return { ...identity, fetchedAt: timestamp, freshUntil, jsonBytes };
+}
+
+export async function writePeerSelectionAudit(
+  ticker: string,
+  profile: FinancialSource["profile"],
+  peerSet: PeerSet,
+  now = new Date(),
+) {
+  const db = await getCacheDatabase();
+  if (!db) return false;
+  const timestamp = now.toISOString();
+  const identity = await ensureIdentity(db, ticker, profile, timestamp);
+  const runId = `peer-run:${identity.listingId}:${now.getTime()}:${crypto.randomUUID().slice(0, 8)}`;
+  await db.prepare(`
+    INSERT INTO peer_selection_runs (
+      id, target_listing_id, source_provider, source_url, source_as_of,
+      selection_version, target_sector, target_industry, candidate_count,
+      selected_count, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    runId,
+    identity.listingId,
+    peerSet.source_provider,
+    peerSet.source_url,
+    peerSet.source_as_of,
+    peerSet.selection_version,
+    profile.sector,
+    profile.industry,
+    peerSet.candidates_considered,
+    peerSet.companies.length,
+    timestamp,
+  ).run();
+  if (peerSet.companies.length) {
+    await db.batch(peerSet.companies.map((company, index) => db.prepare(`
+      INSERT INTO peer_selections (
+        run_id, peer_ticker, peer_name, rank, score_basis_points, reason,
+        factors_json, source_label, source_url, market_cap, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      runId,
+      company.ticker,
+      company.name,
+      index + 1,
+      Math.round(company.selection_score * 100),
+      company.selection_reason,
+      JSON.stringify(company.selection_factors),
+      company.selection_source,
+      company.selection_source_url,
+      company.market_cap,
+      timestamp,
+    )));
+  }
+  const jsonBytes = byteLength(JSON.stringify(peerSet));
+  await recordEvent(db, {
+    listingId: identity.listingId,
+    ticker: identity.ticker,
+    component: "comps_audit",
+    outcome: "stored",
+    jsonBytes,
+    provider: peerSet.source_provider,
+  });
+  return true;
 }
 
 export async function recordProviderFailure(ticker: string, component: string, error: unknown, listingId?: string | null) {

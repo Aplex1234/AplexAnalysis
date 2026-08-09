@@ -51,6 +51,7 @@ export const analysisCache = sqliteTable("analysis_cache", {
   normalizationVersion: text("normalization_version").notNull().default("legacy"),
   valuationModelVersion: text("valuation_model_version").notNull().default("legacy"),
   scoreModelVersion: text("score_model_version").notNull().default("legacy"),
+  componentSourceVersionsJson: text("component_source_versions_json").notNull().default("{}"),
   generatedAt: text("generated_at").notNull(),
   freshUntil: text("fresh_until").notNull(),
   refreshStartedAt: text("refresh_started_at"),
@@ -106,4 +107,37 @@ export const cacheRefreshSchedule = sqliteTable("cache_refresh_schedule", {
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => [
   index("idx_cache_refresh_schedule_due").on(table.nextRefreshAt, table.priority, table.viewCount),
+]);
+
+export const peerSelectionRuns = sqliteTable("peer_selection_runs", {
+  id: text("id").primaryKey(),
+  targetListingId: text("target_listing_id").notNull().references(() => listings.id, { onDelete: "cascade" }),
+  sourceProvider: text("source_provider").notNull(),
+  sourceUrl: text("source_url").notNull(),
+  sourceAsOf: text("source_as_of").notNull(),
+  selectionVersion: text("selection_version").notNull(),
+  targetSector: text("target_sector"),
+  targetIndustry: text("target_industry"),
+  candidateCount: integer("candidate_count").notNull(),
+  selectedCount: integer("selected_count").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [
+  index("idx_peer_selection_runs_target_created_at").on(table.targetListingId, table.createdAt),
+]);
+
+export const peerSelections = sqliteTable("peer_selections", {
+  runId: text("run_id").notNull().references(() => peerSelectionRuns.id, { onDelete: "cascade" }),
+  peerTicker: text("peer_ticker").notNull(),
+  peerName: text("peer_name").notNull(),
+  rank: integer("rank").notNull(),
+  scoreBasisPoints: integer("score_basis_points").notNull(),
+  reason: text("reason").notNull(),
+  factorsJson: text("factors_json").notNull(),
+  sourceLabel: text("source_label").notNull(),
+  sourceUrl: text("source_url").notNull(),
+  marketCap: integer("market_cap"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [
+  primaryKey({ columns: [table.runId, table.peerTicker] }),
+  index("idx_peer_selections_peer_ticker").on(table.peerTicker),
 ]);

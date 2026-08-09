@@ -82,6 +82,7 @@ export type ComparableCompany = {
   market_cap: number | null;
   revenue_growth: number | null;
   net_income_growth: number | null;
+  gross_margin: number | null;
   operating_margin: number | null;
   fcf_margin: number | null;
   roic: number | null;
@@ -91,6 +92,11 @@ export type ComparableCompany = {
   fcf_yield: number | null;
   fiscal_year: number;
   quote_as_of: string;
+  selection_reason: string;
+  selection_score: number;
+  selection_factors: string[];
+  selection_source: string;
+  selection_source_url: string;
 };
 
 export type Analysis = {
@@ -174,6 +180,14 @@ export type Analysis = {
     formula: string;
   };
   comps: ComparableCompany[];
+  peer_selection: {
+    methodology: string;
+    source_provider: string;
+    source_url: string;
+    source_as_of: string;
+    candidates_considered: number;
+    selection_version: string;
+  };
   filings: Array<{
     form: string;
     filing_date: string;

@@ -10,7 +10,8 @@ import { extractRiskFactorHeadings } from "../lib/server/risk-factors.ts";
 import { summarizeCompanyDescription } from "../lib/server/company-description.ts";
 import { cacheIdentity, hasSameFinancialFingerprint, isAnalysisCacheCompatible, parseCachedAnalysisRow } from "../lib/server/analysis-cache.ts";
 import { buildAnalysis } from "../lib/server/analysis.ts";
-import { ANALYSIS_SCHEMA_VERSION, NORMALIZATION_VERSION, SCORE_MODEL_VERSION, VALUATION_MODEL_VERSION } from "../lib/server/model-versions.ts";
+import { ANALYSIS_SCHEMA_VERSION, COMPONENT_SOURCE_VERSIONS, NORMALIZATION_VERSION, SCORE_MODEL_VERSION, VALUATION_MODEL_VERSION } from "../lib/server/model-versions.ts";
+import { extractPeerBusinessContext, rankPeerCandidates } from "../lib/server/peer-selection.ts";
 
 async function render() {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -92,9 +93,11 @@ test("invalidates only incompatible derived snapshots while retaining company-sc
     normalization_version: NORMALIZATION_VERSION,
     valuation_model_version: VALUATION_MODEL_VERSION,
     score_model_version: SCORE_MODEL_VERSION,
+    component_source_versions_json: JSON.stringify(COMPONENT_SOURCE_VERSIONS),
   };
   assert.equal(isAnalysisCacheCompatible(compatible), true);
   assert.equal(isAnalysisCacheCompatible({ ...compatible, valuation_model_version: "valuation-next" }), false);
+  assert.equal(isAnalysisCacheCompatible({ ...compatible, component_source_versions_json: JSON.stringify({ ...COMPONENT_SOURCE_VERSIONS, comps: "comps-next" }) }), false);
 
   const cached = { sourceFingerprint: "accession-a" };
   assert.equal(hasSameFinancialFingerprint(cached, { accessionNumber: "accession-a", filingDate: "2026-08-01", form: "10-Q" }), true);
@@ -104,6 +107,89 @@ test("invalidates only incompatible derived snapshots while retaining company-sc
   const companyB = cacheIdentity({ cik: "0000000002", ticker: "BBB", exchange: "NYSE" });
   assert.notEqual(companyA.companyId, companyB.companyId);
   assert.notEqual(companyA.listingId, companyB.listingId);
+});
+
+test("ranks close operating peers ahead of broad same-sector companies", () => {
+  const target = {
+    ticker: "DELL",
+    name: "Dell Technologies Inc.",
+    sector: "Technology",
+    industry: "Computer Manufacturing",
+    marketCap: 100_000_000_000,
+    description: "Dell sells PCs, workstations, servers, storage and data-center infrastructure to consumers and enterprise customers.",
+  };
+  const ranked = rankPeerCandidates(target, [
+    {
+      ticker: "HPQ", name: "HP Inc.", sector: "Technology", industry: "Computer Manufacturing", marketCap: 25_000_000_000,
+      description: "HP sells personal computers, workstations and peripherals to consumer and commercial customers.",
+    },
+    {
+      ticker: "HPE", name: "Hewlett Packard Enterprise", sector: "Technology", industry: "Retail: Computer Software & Peripheral Equipment", marketCap: 30_000_000_000,
+      description: "HPE sells enterprise servers, storage, networking and data-center infrastructure.",
+      reviewedReason: "Selected because HPE identifies Dell as a primary competitor in enterprise data-center infrastructure.",
+      evidenceLabel: "HPE annual filing",
+      evidenceUrl: "https://www.sec.gov/",
+    },
+    {
+      ticker: "SMCI", name: "Super Micro Computer", sector: "Technology", industry: "Computer Manufacturing", marketCap: 20_000_000_000,
+      description: "Supermicro sells servers and data-center infrastructure for enterprise and cloud customers.",
+    },
+    {
+      ticker: "MSFT", name: "Microsoft", sector: "Technology", industry: "Computer Software: Prepackaged Software", marketCap: 3_000_000_000_000,
+      description: "Microsoft develops enterprise software and cloud services.",
+    },
+  ]);
+
+  assert.deepEqual(ranked.slice(0, 3).map((company) => company.ticker).sort(), ["HPE", "HPQ", "SMCI"]);
+  assert.ok(ranked.find((company) => company.ticker === "HPE")?.selectionReason.includes("primary competitor"));
+  assert.ok(ranked.find((company) => company.ticker === "HPQ")?.selectionReason.includes("Computer Manufacturing"));
+  assert.ok((ranked.find((company) => company.ticker === "SMCI")?.selectionScore ?? 0) > (ranked.find((company) => company.ticker === "MSFT")?.selectionScore ?? 0));
+});
+
+test("uses products and business models to separate companies inside a broad software industry", () => {
+  const target = {
+    ticker: "ADBE",
+    name: "Adobe Inc.",
+    sector: "Technology",
+    industry: "Computer Software: Prepackaged Software",
+    marketCap: 140_000_000_000,
+    description: "Adobe provides creativity, digital media, document and personalized customer experience software.",
+    primaryDescription: "Adobe provides creativity, digital media, document and personalized customer experience software.",
+  };
+  const ranked = rankPeerCandidates(target, [
+    {
+      ticker: "ADSK", name: "Autodesk, Inc.", sector: "Technology", industry: "Computer Software: Prepackaged Software", marketCap: 65_000_000_000,
+      description: "Autodesk provides design software for designers, engineers, architects and creators.",
+    },
+    {
+      ticker: "CDNS", name: "Cadence Design Systems, Inc.", sector: "Technology", industry: "Computer Software: Prepackaged Software", marketCap: 80_000_000_000,
+      description: "Cadence provides electronic design automation software used by engineers and product designers.",
+    },
+    {
+      ticker: "CRM", name: "Salesforce, Inc.", sector: "Technology", industry: "Computer Software: Prepackaged Software", marketCap: 190_000_000_000,
+      description: "Salesforce provides customer relationship management and customer experience applications.",
+    },
+    {
+      ticker: "XYZ", name: "Block, Inc.", sector: "Technology", industry: "Computer Software: Prepackaged Software", marketCap: 45_000_000_000,
+      description: "Block provides financial technology, merchant payments and commerce products.",
+    },
+    {
+      ticker: "NET", name: "Cloudflare, Inc.", sector: "Technology", industry: "Computer Software: Prepackaged Software", marketCap: 70_000_000_000,
+      description: "Cloudflare provides a connectivity cloud, network security and content delivery services.",
+    },
+  ]);
+
+  assert.deepEqual(ranked.map((company) => company.ticker), ["CRM", "ADSK"]);
+  assert.ok((ranked.find((company) => company.ticker === "ADSK")?.selectionScore ?? 0) > (ranked.find((company) => company.ticker === "XYZ")?.selectionScore ?? 0));
+  assert.ok(ranked.find((company) => company.ticker === "ADSK")?.selectionReason.includes("creative, design and digital-content tools"));
+});
+
+test("extracts product and customer context from a target annual filing", () => {
+  const html = `<html><body><div>Table of Contents Item 1. Business Item 1A</div><h2>ITEM 1. BUSINESS</h2><p>We provide solutions for creators including imaging, video editing, web design platforms and document workflows. Marketing professionals use our digital experience products. Our customers subscribe to these products across desktop and mobile devices. This paragraph provides enough detail to distinguish the operating business from the filing table of contents.</p><h2>COMPETITION</h2><p>Unrelated competitive categories.</p><h2>ITEM 1A. RISK FACTORS</h2><p>Unrelated risks.</p></body></html>`;
+  const context = extractPeerBusinessContext(html);
+  assert.match(context, /video editing/);
+  assert.match(context, /document workflows/);
+  assert.doesNotMatch(context, /Unrelated competitive categories|Unrelated risks/);
 });
 
 test("rebuilds valuation and score from supplied normalized inputs with external access disabled", async () => {
@@ -174,7 +260,15 @@ test("rebuilds valuation and score from supplied normalized inputs with external
         source_url: "https://www.nasdaq.com/",
         disclosure: "Cached test data.",
       },
-      peerSet: { companies: [], methodology: "Cached peer set" },
+      peerSet: {
+        companies: [],
+        methodology: "Cached peer set",
+        source_provider: "Cached source",
+        source_url: "https://www.nasdaq.com/market-activity/stocks/screener",
+        source_as_of: "2026-08-09T00:00:00.000Z",
+        candidates_considered: 0,
+        selection_version: "peer-selection-test",
+      },
     });
     assert.equal(analysis.company.name, "Cached Company");
     assert.equal(analysis.provenance.financials, "normalized-cache");

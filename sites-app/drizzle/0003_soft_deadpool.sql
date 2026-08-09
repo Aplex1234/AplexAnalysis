@@ -1,0 +1,1 @@
+ALTER TABLE `analysis_cache` ADD `component_source_versions_json` text DEFAULT '{}' NOT NULL;

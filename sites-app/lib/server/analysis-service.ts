@@ -24,6 +24,7 @@ import {
   writeAnalysisSnapshot,
   writeComponentCache,
   writeFinancialSourceCache,
+  writePeerSelectionAudit,
   type CachedComponent,
   type CachedFinancialSource,
 } from "./analysis-cache.ts";
@@ -162,16 +163,28 @@ async function loadPeers(
   try {
     const peerSet = await fetchComparableCompanies(
       ticker,
-      financials.profile.name,
-      financials.profile.sector,
+      financials.profile,
       quote?.market_cap ?? null,
+      financials.filings,
     );
     const stored = await writeComponentCache(ticker, financials.profile, "comps", peerSet, COMPONENT_SOURCE_VERSIONS.comps, CACHE_TTLS.comps, "AplexAnalysis comps engine", refreshStartedAt);
+    await writePeerSelectionAudit(ticker, financials.profile, peerSet);
     return { data: peerSet, freshness: freshness("live", stored?.fetchedAt ?? new Date().toISOString(), stored?.freshUntil ?? null, peerSet.methodology) };
   } catch (error) {
     await recordProviderFailure(ticker, "comps", error, cached?.listingId);
     if (cached) return { data: cached.data, cached, freshness: freshness("stale", cached.fetchedAt, cached.freshUntil, cached.data.methodology) };
-    return { data: { companies: [], methodology: "Comparable-company retrieval was unavailable" }, freshness: freshness("unavailable", null, null, "Comparable-company retrieval unavailable") };
+    return {
+      data: {
+        companies: [],
+        methodology: "Comparable-company retrieval was unavailable",
+        source_provider: "Unavailable",
+        source_url: "https://www.nasdaq.com/market-activity/stocks/screener",
+        source_as_of: new Date().toISOString(),
+        candidates_considered: 0,
+        selection_version: COMPONENT_SOURCE_VERSIONS.comps,
+      },
+      freshness: freshness("unavailable", null, null, "Comparable-company retrieval unavailable"),
+    };
   }
 }
 

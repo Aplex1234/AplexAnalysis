@@ -759,6 +759,7 @@ function CompsView({ analysis }: { analysis: Analysis }) {
     market_cap: analysis.metrics.market_cap ?? null,
     revenue_growth: analysis.metrics.revenue_growth_yoy ?? null,
     net_income_growth: analysis.metrics.net_income_growth_yoy ?? null,
+    gross_margin: analysis.metrics.gross_margin ?? null,
     operating_margin: analysis.metrics.operating_margin ?? null,
     fcf_margin: analysis.metrics.fcf_margin ?? null,
     roic: analysis.metrics.roic ?? null,
@@ -768,6 +769,11 @@ function CompsView({ analysis }: { analysis: Analysis }) {
     fcf_yield: analysis.metrics.fcf_yield ?? null,
     fiscal_year: analysis.financials.at(-1)?.fiscal_year ?? 0,
     quote_as_of: analysis.quote.as_of,
+    selection_reason: "The company currently being analyzed.",
+    selection_score: 100,
+    selection_factors: [],
+    selection_source: analysis.company.description_source,
+    selection_source_url: analysis.company.description_source_url,
   };
   const rows = [target, ...analysis.comps];
   const peerPes = analysis.comps
@@ -786,7 +792,7 @@ function CompsView({ analysis }: { analysis: Analysis }) {
           <div>
             <span>PEER BENCHMARK</span>
             <h2 id="comps-heading">{analysis.company.name}</h2>
-            <p>{analysis.comps.length ? `Current valuation and operating performance against ${analysis.comps.length} comparable companies.` : "Current valuation and operating performance. Comparable-company data is temporarily unavailable."}</p>
+            <p>{analysis.comps.length ? `Industry-first comparison against ${analysis.comps.length} operating peers selected for business relevance.` : "Current valuation and operating performance. Comparable-company data is temporarily unavailable."}</p>
           </div>
           <div className="comps-peer-count"><strong>{analysis.comps.length}</strong><span>peers loaded</span></div>
         </div>
@@ -794,7 +800,7 @@ function CompsView({ analysis }: { analysis: Analysis }) {
           <div><span>Target market cap</span><strong>{compactMoney(target.market_cap)}</strong></div>
           <div><span>Target P / E</span><strong>{multiple(target.pe)}</strong></div>
           <div><span>Peer median P / E</span><strong>{multiple(peerMedianPe)}</strong></div>
-          <div><span>Target FCF margin</span><strong>{percent(target.fcf_margin)}</strong></div>
+          <div><span>Candidates screened</span><strong>{analysis.peer_selection.candidates_considered}</strong></div>
         </div>
       </section>
 
@@ -806,7 +812,7 @@ function CompsView({ analysis }: { analysis: Analysis }) {
         <div className="comps-table-scroll">
           <table className="research-table comps-table">
             <thead>
-              <tr><th>Company</th><th>Market cap</th><th>Revenue growth</th><th>Income growth</th><th>Operating margin</th><th>FCF margin</th><th>ROIC</th><th>P / E</th><th>P / B</th><th>P / FCF</th><th>FCF yield</th></tr>
+              <tr><th>Company</th><th>Market cap</th><th>Revenue growth</th><th>Earnings growth</th><th>Gross margin</th><th>Operating margin</th><th>P / E</th></tr>
             </thead>
             <tbody>
               {rows.map((row) => {
@@ -823,13 +829,9 @@ function CompsView({ analysis }: { analysis: Analysis }) {
                     <td>{compactMoney(row.market_cap)}</td>
                     <td className={growthClass(row.revenue_growth)}>{percent(row.revenue_growth)}</td>
                     <td className={growthClass(row.net_income_growth)}>{percent(row.net_income_growth)}</td>
+                    <td>{percent(row.gross_margin)}</td>
                     <td>{percent(row.operating_margin)}</td>
-                    <td>{percent(row.fcf_margin)}</td>
-                    <td>{percent(row.roic)}</td>
                     <td>{multiple(row.pe)}</td>
-                    <td>{multiple(row.price_to_book)}</td>
-                    <td>{multiple(row.price_fcf)}</td>
-                    <td>{percent(row.fcf_yield)}</td>
                   </tr>
                 );
               })}
@@ -838,10 +840,40 @@ function CompsView({ analysis }: { analysis: Analysis }) {
         </div>
         <div className="comps-methodology">
           <Information size={16} />
-          <p><strong>How peers are built</strong><span>{analysis.provenance.comparables}. {fiscalCoverage} annual data is shown where available.</span></p>
+          <p>
+            <strong>How peers are built</strong>
+            <span>{analysis.provenance.comparables} {fiscalCoverage} annual data is shown where available.</span>
+            <a href={analysis.peer_selection.source_url} target="_blank" rel="noreferrer">Open {analysis.peer_selection.source_provider}</a>
+          </p>
         </div>
         {!analysis.comps.length && <div className="comps-empty"><p>No reliable peer rows were available for this company. The target metrics remain current, and the app will retry peer retrieval on the next analysis.</p></div>}
       </section>
+
+      {analysis.comps.length > 0 && (
+        <section className="peer-rationale-section" aria-labelledby="peer-rationale-heading">
+          <div className="peer-rationale-heading">
+            <div>
+              <span>SELECTION RATIONALE</span>
+              <h3 id="peer-rationale-heading">Why these companies are comparable</h3>
+              <p>Industry similarity is weighted first, followed by shared products, customers, business model and company size.</p>
+            </div>
+            <small>{analysis.peer_selection.selection_version}</small>
+          </div>
+          <div className="peer-rationale-grid">
+            {analysis.comps.map((peer, index) => (
+              <article key={peer.ticker}>
+                <div className="peer-rationale-company">
+                  <span>{String(index + 1).padStart(2, "0")}</span>
+                  <div><strong>{peer.name}</strong><small>{peer.ticker} / relevance {peer.selection_score.toFixed(1)}</small></div>
+                </div>
+                <p>{peer.selection_reason}</p>
+                {peer.selection_factors.length > 0 && <div className="peer-factor-list">{peer.selection_factors.slice(0, 3).map((factor) => <span key={factor}>{factor}</span>)}</div>}
+                <a href={peer.selection_source_url} target="_blank" rel="noreferrer">Source: {peer.selection_source}</a>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

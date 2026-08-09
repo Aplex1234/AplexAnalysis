@@ -15,6 +15,20 @@
       "when": 1786260539011,
       "tag": "0001_cheerful_phantom_reporter",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786262579236,
+      "tag": "0002_majestic_warbird",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1786264269111,
+      "tag": "0003_soft_deadpool",
+      "breakpoints": true
     }
   ]
 }
