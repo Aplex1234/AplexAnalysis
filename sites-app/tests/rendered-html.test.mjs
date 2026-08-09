@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { buildFinancialChartData, formatBillions } from "../../frontend/lib/chart.ts";
@@ -30,6 +31,12 @@ test("server-renders the AplexAnalysis terminal", async () => {
   assert.match(html, /Ticker or company/);
   assert.match(html, /Research software\. Not investment advice\./);
   assert.doesNotMatch(html, /codex-preview|Your site is taking shape/);
+});
+
+test("keeps the desktop comps table inside its panel", async () => {
+  const css = await readFile(new URL("../../frontend/app/premium.css", import.meta.url), "utf8");
+  assert.doesNotMatch(css, /\.comps-table\s*\{[^}]*min-width:\s*1320px/s);
+  assert.match(css, /\.comps-table\s*\{[^}]*width:\s*100%/s);
 });
 
 test("financial chart scales operating income to readable billions", () => {

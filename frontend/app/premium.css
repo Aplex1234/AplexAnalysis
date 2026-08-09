@@ -320,22 +320,25 @@ body { background: #080c10; }
 .comps-table-heading { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 22px 24px 14px; }
 .comps-table-heading .section-heading { margin: 0; }
 .comps-table-heading > span { flex: 0 0 auto; color: var(--aplex-muted); font: 10px "IBM Plex Mono", monospace; }
-.comps-table-scroll { overflow-x: auto; border-top: 1px solid var(--aplex-line); }
-.comps-table { min-width: 1320px; table-layout: auto; }
+.comps-table-scroll { overflow-x: hidden; border-top: 1px solid var(--aplex-line); }
+.comps-table { width: 100%; min-width: 0; table-layout: fixed; }
 .comps-table thead th,
 .comps-table tbody td { text-align: center; }
-.comps-table thead th:first-child { min-width: 340px; padding-inline: 18px; text-align: center; }
-.comps-table tbody th:first-child { min-width: 340px; padding-inline: 18px; box-shadow: none; }
+.comps-table th,
+.comps-table td { padding-inline: 7px; }
+.comps-table thead th { height: 52px; line-height: 1.25; white-space: normal; }
+.comps-table thead th:first-child { width: 29%; padding-inline: 14px; text-align: center; }
+.comps-table tbody th:first-child { width: 29%; padding-inline: 14px; box-shadow: none; }
 .comps-table tbody tr { height: 64px; }
-.comps-table tbody td { color: var(--aplex-ink); font: 11px "IBM Plex Mono", monospace; }
+.comps-table tbody td { color: var(--aplex-ink); font: 10px "IBM Plex Mono", monospace; }
 .comps-table tbody td.is-positive { color: var(--aplex-positive); }
 .comps-table tbody td.is-negative { color: var(--aplex-negative); }
 .comps-table .target-row th:first-child { box-shadow: inset 3px 0 0 var(--aplex-blue); }
 .comps-company-cell {
   display: grid;
-  grid-template-columns: 58px minmax(190px, 1fr) 54px;
+  grid-template-columns: 44px minmax(0, 1fr) 48px;
   align-items: center;
-  gap: 9px;
+  gap: 6px;
   width: 100%;
 }
 .comps-symbol { color: var(--aplex-ink); font: 12px "IBM Plex Mono", monospace; font-weight: 650; text-align: left; }
@@ -421,6 +424,11 @@ body { background: #080c10; }
   .overview-primary-grid { grid-template-columns: minmax(0, 1fr) 300px; }
   .company-header { grid-template-columns: minmax(0, 1fr) 320px; }
   .key-highlights-grid { grid-template-columns: repeat(5, minmax(145px, 1fr)); overflow-x: auto; }
+}
+
+@media (max-width: 1080px) {
+  .comps-table-scroll { overflow-x: auto; }
+  .comps-table { min-width: 1040px; }
 }
 
 @media (max-width: 960px) {
