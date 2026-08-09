@@ -43,11 +43,31 @@ test("keeps the desktop comps table inside its panel", async () => {
 test("creates a concise, display-safe company summary", () => {
   const source = "Example Corp. designs software for business customers. It also provides cloud services and support. A third sentence should not appear in the overview.";
   assert.equal(
-    summarizeCompanyDescription(source),
+    summarizeCompanyDescription(source, "Example Corp."),
     "Example Corp. designs software for business customers. It also provides cloud services and support.",
   );
   assert.equal(summarizeCompanyDescription("A business &amp; services company — with a long dash."), "A business & services company - with a long dash.");
   assert.equal(summarizeCompanyDescription("   "), null);
+});
+
+test("prefers concrete products and uses over generic company-profile language", () => {
+  const source = "Sandisk is a leading global semiconductor memory company with more than 30 years of innovation in NAND flash technology. We are a vertically integrated solutions provider with ownership of chip-level design and IP, front and back-end manufacturing, as well as systems engineering and design. With a differentiated innovation engine driving advancements in storage and semiconductor technologies, our broad and ever-expanding portfolio delivers powerful flash storage solutions for artificial intelligence workloads in datacenters, edge devices, and consumer applications. Our technologies enable everyone from students, gamers and home offices, to the largest enterprises and public clouds to produce, analyze, and store data. Our solutions include a broad range of solid state drives, embedded products, removable cards, universal serial bus drives, and wafers and components. Learn more about Sandisk at www.sandisk.com.";
+  const summary = summarizeCompanyDescription(source, "Sandisk");
+
+  assert.equal(
+    summary,
+    "Sandisk's solutions include solid-state drives, embedded products, removable cards, USB drives, and semiconductor wafers and components. Its flash storage products support AI workloads in data centers, edge devices, and consumer applications.",
+  );
+  assert.doesNotMatch(summary, /leading|innovation engine|more than 30 years/i);
+});
+
+test("does not prioritize promotional plans over the current business", () => {
+  const source = "Example Motors makes electric vehicles. It sells batteries to homes and utilities. The company plans to begin selling aircraft and boats.";
+  const summary = summarizeCompanyDescription(source, "Example Motors");
+
+  assert.match(summary, /makes electric vehicles/i);
+  assert.match(summary, /sells batteries/i);
+  assert.doesNotMatch(summary, /plans to|aircraft|boats/i);
 });
 
 test("financial chart scales operating income to readable billions", () => {

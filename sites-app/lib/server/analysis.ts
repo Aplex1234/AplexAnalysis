@@ -572,23 +572,24 @@ async function secData(ticker: string, includeRisks = true) {
   const latestAnnualFiling = relevantFilings.find((filing: Filing) => ["10-K", "20-F", "40-F"].includes(filing.form));
   const filingRisks = includeRisks && latestAnnualFiling ? await fetchFilingRisks(latestAnnualFiling) : [];
   const companyName = (nasdaqProfile?.name ?? submissions.name ?? identity.name).trim();
-  const nasdaqDescription = summarizeCompanyDescription(nasdaqProfile?.description ?? "");
-  const bundledDescription = summarizeCompanyDescription(FALLBACK[ticker]?.profile.description ?? "");
+  const nasdaqDescription = summarizeCompanyDescription(nasdaqProfile?.description ?? "", companyName);
+  const bundledDescription = summarizeCompanyDescription(FALLBACK[ticker]?.profile.description ?? "", companyName);
   const secDescription = summarizeCompanyDescription(
     submissions.sicDescription
       ? `${companyName} is a public company operating in ${submissions.sicDescription}. It files financial statements and company disclosures with the SEC.`
       : `${companyName} is a public company that files financial statements and company disclosures with the SEC.`,
+    companyName,
   );
-  const description = nasdaqDescription ?? bundledDescription ?? secDescription;
-  const descriptionSource = nasdaqDescription
-    ? "Nasdaq company profile"
-    : bundledDescription
-      ? FALLBACK[ticker].profile.description_source
+  const description = bundledDescription ?? nasdaqDescription ?? secDescription;
+  const descriptionSource = bundledDescription
+    ? FALLBACK[ticker].profile.description_source
+    : nasdaqDescription
+      ? "Nasdaq company profile"
       : "SEC company submissions";
-  const descriptionSourceUrl = nasdaqDescription
-    ? `https://www.nasdaq.com/market-activity/stocks/${ticker.toLowerCase()}/company-profile`
-    : bundledDescription
-      ? FALLBACK[ticker].profile.description_source_url
+  const descriptionSourceUrl = bundledDescription
+    ? FALLBACK[ticker].profile.description_source_url
+    : nasdaqDescription
+      ? `https://www.nasdaq.com/market-activity/stocks/${ticker.toLowerCase()}/company-profile`
       : `https://www.sec.gov/edgar/browse/?CIK=${cik}&owner=exclude`;
   return {
     profile: {
