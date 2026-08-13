@@ -68,6 +68,8 @@ export function ResearchTerminal({ initialAnalysis = null }: { initialAnalysis?:
   const [forcedSection, setForcedSection] = useState<Exclude<AnalysisSection, "overview"> | null>(null);
   const [sectionErrors, setSectionErrors] = useState<Partial<Record<AnalysisSection, string>>>({});
   const [error, setError] = useState<string | null>(null);
+  const [manualRefreshing, setManualRefreshing] = useState(false);
+  const [manualRefreshStatus, setManualRefreshStatus] = useState<string | null>(null);
   const [requestVersion, setRequestVersion] = useState(0);
   const [searchResults, setSearchResults] = useState<SecuritySearchResult[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -123,6 +125,8 @@ export function ResearchTerminal({ initialAnalysis = null }: { initialAnalysis?:
     setLoading(!hasVisibleSnapshot);
     setLoadingSection(null);
     setSectionErrors({});
+    setManualRefreshing(false);
+    setManualRefreshStatus(null);
     if (!hasVisibleSnapshot) setAnalysis(null);
     setError(null);
     fetchAnalysis(ticker, controller.signal, "overview")
@@ -202,6 +206,28 @@ export function ResearchTerminal({ initialAnalysis = null }: { initialAnalysis?:
       loaded_sections: (current.loaded_sections ?? NAV_ITEMS.map((item) => item.key)).filter((item) => item !== section),
     } : current);
   }, []);
+
+  const refreshCompanyData = useCallback(async () => {
+    if (!analysis || manualRefreshing) return;
+    const refreshTicker = ticker;
+    const refreshSection = activePage;
+    setManualRefreshing(true);
+    setManualRefreshStatus(null);
+    try {
+      const refreshed = await fetchAnalysis(refreshTicker, undefined, refreshSection, true);
+      setAnalysis((current) => {
+        if (!current || current.company.ticker !== refreshTicker) return current;
+        return refreshSection === "overview"
+          ? refreshed
+          : mergeAnalysisSection(current, refreshed, refreshSection);
+      });
+      setManualRefreshStatus("Data refreshed just now");
+    } catch (refreshError) {
+      setManualRefreshStatus(refreshError instanceof Error ? refreshError.message : "Refresh failed. Try again.");
+    } finally {
+      setManualRefreshing(false);
+    }
+  }, [activePage, analysis, manualRefreshing, ticker]);
 
   useEffect(() => {
     const query = tickerInput.trim();
@@ -442,7 +468,12 @@ export function ResearchTerminal({ initialAnalysis = null }: { initialAnalysis?:
         {!loading && error && !analysis && <ErrorState ticker={ticker} error={error} retry={() => setRequestVersion((value) => value + 1)} />}
         {!loading && analysis && (
           <>
-            <CompanyHeader analysis={analysis} />
+            <CompanyHeader
+              analysis={analysis}
+              refreshing={manualRefreshing}
+              refreshStatus={manualRefreshStatus}
+              onRefresh={refreshCompanyData}
+            />
             {analysis.provenance.warnings.map((warning) => (
               <InlineNotification key={warning} kind="warning" lowContrast title="Source status" subtitle={warning} hideCloseButton />
             ))}
@@ -496,7 +527,12 @@ function freshnessTime(value: string | null | undefined, dateOnly = false) {
     : { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
-function CompanyHeader({ analysis }: { analysis: Analysis }) {
+function CompanyHeader({ analysis, refreshing, refreshStatus, onRefresh }: {
+  analysis: Analysis;
+  refreshing: boolean;
+  refreshStatus: string | null;
+  onRefresh: () => void;
+}) {
   const classification = [analysis.company.sector, analysis.company.industry].filter(Boolean).join(" / ");
   const peg = analysis.valuation.growth_projection.peg_ratio;
   const freshness = analysis.freshness;
@@ -516,7 +552,18 @@ function CompanyHeader({ analysis }: { analysis: Analysis }) {
             <h1>{analysis.company.name}</h1>
             <span>{analysis.company.ticker}</span>
             <Tag type={freshness?.page_status === "stale" ? "warm-gray" : "green"}>{statusLabel}</Tag>
+            <Button
+              className={`company-refresh-button${refreshing ? " is-refreshing" : ""}`}
+              kind="ghost"
+              size="sm"
+              renderIcon={Renew}
+              disabled={refreshing}
+              onClick={onRefresh}
+            >
+              {refreshing ? "Refreshing data" : "Refresh data"}
+            </Button>
           </div>
+          <span className="company-refresh-status" aria-live="polite">{refreshStatus}</span>
           <p>{analysis.company.exchange || "US listed"} / {classification || "SEC reporting company"}</p>
           <div className="company-price-line">
             <strong>{money(analysis.quote.price)}</strong>

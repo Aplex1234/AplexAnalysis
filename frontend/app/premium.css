@@ -170,6 +170,19 @@ body { background: #080c10; }
 .company-title-row h1 { max-width: 680px; overflow: hidden; margin: 0; color: var(--aplex-ink); font-size: clamp(22px, 2.2vw, 30px); text-overflow: ellipsis; white-space: nowrap; }
 .company-title-row > span { padding: 4px 7px; border-radius: 6px; background: var(--aplex-elevated); color: var(--aplex-muted); }
 .company-title-row .cds--tag { border-radius: 999px; }
+.company-refresh-button.cds--btn {
+  min-height: 30px;
+  margin-left: 2px;
+  padding: 0 31px 0 10px;
+  border: 1px solid var(--aplex-line);
+  border-radius: 8px;
+  color: var(--aplex-muted);
+  font-size: 11px;
+}
+.company-refresh-button.cds--btn:hover { background: var(--aplex-hover); color: var(--aplex-ink); }
+.company-refresh-button.is-refreshing svg { animation: ap-refresh-spin .8s linear infinite; }
+.company-refresh-status { min-height: 12px; display: block; margin-top: 4px; color: var(--aplex-muted); font-size: 9px; }
+@keyframes ap-refresh-spin { to { transform: rotate(360deg); } }
 .company-overview > p { margin: 7px 0 12px; color: var(--aplex-muted); font-size: 11px; }
 .company-price-line { display: flex; align-items: baseline; gap: 12px; }
 .company-price-line strong { color: var(--aplex-ink); font: 34px "IBM Plex Mono", monospace; font-weight: 520; letter-spacing: -.055em; }

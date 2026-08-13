@@ -68,14 +68,14 @@ async function scheduleSharedRefresh(cacheKey: string, task: () => Promise<unkno
   return true;
 }
 
-async function loadFinancials(ticker: string): Promise<{
+async function loadFinancials(ticker: string, forceRefresh = false): Promise<{
   data: FinancialSource | null;
   cache: CachedFinancialSource | null;
   freshness: FreshnessItem;
   warnings: string[];
 }> {
   const cached = await readFinancialSourceCache(ticker);
-  if (cached?.isFresh) {
+  if (cached?.isFresh && !forceRefresh) {
     return {
       data: cached.source,
       cache: cached,
@@ -84,7 +84,7 @@ async function loadFinancials(ticker: string): Promise<{
     };
   }
 
-  if (cached) {
+  if (cached && !forceRefresh) {
     try {
       const fingerprint = await fetchFinancialFingerprint(ticker);
       if (hasSameFinancialFingerprint(cached, fingerprint)) {
@@ -136,10 +136,10 @@ async function loadFinancials(ticker: string): Promise<{
   }
 }
 
-async function loadQuote(ticker: string, financials: FinancialSource | null): Promise<Loaded<Quote>> {
+async function loadQuote(ticker: string, financials: FinancialSource | null, forceRefresh = false): Promise<Loaded<Quote>> {
   const cached = await readComponentCache<Quote>(ticker, "quote", COMPONENT_SOURCE_VERSIONS.quote);
-  if (cached?.isFresh) return { data: cached.data, cached, freshness: freshness("cached", cached.data.as_of, cached.freshUntil, cached.provider ?? "Cached quote") };
-  if (cached) {
+  if (cached?.isFresh && !forceRefresh) return { data: cached.data, cached, freshness: freshness("cached", cached.data.as_of, cached.freshUntil, cached.provider ?? "Cached quote") };
+  if (cached && !forceRefresh) {
     await scheduleSharedRefresh(`quote:${ticker}`, async () => {
       try {
         const quote = await fetchQuote(ticker);
@@ -164,10 +164,10 @@ async function loadQuote(ticker: string, financials: FinancialSource | null): Pr
   }
 }
 
-async function loadEstimates(ticker: string, financials: FinancialSource | null): Promise<Loaded<AnalystEstimates>> {
+async function loadEstimates(ticker: string, financials: FinancialSource | null, forceRefresh = false): Promise<Loaded<AnalystEstimates>> {
   const cached = await readComponentCache<AnalystEstimates>(ticker, "analyst_estimates", COMPONENT_SOURCE_VERSIONS.analyst_estimates);
-  if (cached?.isFresh) return { data: cached.data, cached, freshness: freshness("cached", cached.data.as_of, cached.freshUntil, cached.provider ?? "Cached analyst estimates") };
-  if (cached) {
+  if (cached?.isFresh && !forceRefresh) return { data: cached.data, cached, freshness: freshness("cached", cached.data.as_of, cached.freshUntil, cached.provider ?? "Cached analyst estimates") };
+  if (cached && !forceRefresh) {
     await scheduleSharedRefresh(`analyst-estimates:${ticker}`, async () => {
       try {
         const estimates = await fetchAnalystEstimates(ticker);
@@ -307,11 +307,12 @@ async function loadPeers(
   ticker: string,
   financials: FinancialSource | null,
   quote: Quote | null,
+  forceRefresh = false,
 ): Promise<Loaded<PeerSet>> {
   const cached = await readComponentCache<PeerSet>(ticker, "comps", COMPONENT_SOURCE_VERSIONS.comps);
-  if (cached?.isFresh) return { data: cached.data, cached, freshness: freshness("cached", cached.fetchedAt, cached.freshUntil, cached.data.methodology) };
+  if (cached?.isFresh && !forceRefresh) return { data: cached.data, cached, freshness: freshness("cached", cached.fetchedAt, cached.freshUntil, cached.data.methodology) };
   if (!financials) return { data: cached?.data ?? null, cached, freshness: cached ? freshness("stale", cached.fetchedAt, cached.freshUntil, cached.data.methodology) : freshness("unavailable", null, null, "Comparable companies unavailable") };
-  if (cached) {
+  if (cached && !forceRefresh) {
     await scheduleSharedRefresh(`comps:${ticker}`, async () => {
       try {
         await fetchAndStorePeers(ticker, financials, quote);
@@ -469,11 +470,11 @@ function emptyPeerSet(): PeerSet {
   };
 }
 
-export async function rebuildOverviewFromComponentCaches(rawTicker: string) {
+export async function rebuildOverviewFromComponentCaches(rawTicker: string, forceRefresh = false) {
   const ticker = normalizeTicker(rawTicker);
   const [financials, initialQuote] = await Promise.all([
-    loadFinancials(ticker),
-    loadQuote(ticker, null),
+    loadFinancials(ticker, forceRefresh),
+    loadQuote(ticker, null, forceRefresh),
   ]);
   let quote = initialQuote;
   if (financials.data && quote.data && !quote.cached && quote.freshness.status === "live") {
@@ -514,15 +515,15 @@ export async function rebuildOverviewFromComponentCaches(rawTicker: string) {
 }
 
 export async function rebuildAnalysisSectionFromComponentCaches(rawTicker: string, section: AnalysisSection, forceRefresh = false) {
-  if (section === "overview") return rebuildOverviewFromComponentCaches(rawTicker);
+  if (section === "overview") return rebuildOverviewFromComponentCaches(rawTicker, forceRefresh);
   const ticker = normalizeTicker(rawTicker);
-  const financials = await loadFinancials(ticker);
-  const quote = await loadQuote(ticker, financials.data);
+  const financials = await loadFinancials(ticker, forceRefresh);
+  const quote = await loadQuote(ticker, financials.data, forceRefresh);
   const estimates = section === "earnings"
-    ? await loadEstimates(ticker, financials.data)
+    ? await loadEstimates(ticker, financials.data, forceRefresh)
     : { data: emptyEstimates(ticker), freshness: freshness("unavailable", null, null, "Loads with Earnings") };
   const peers = section === "comps"
-    ? await loadPeers(ticker, financials.data, quote.data)
+    ? await loadPeers(ticker, financials.data, quote.data, forceRefresh)
     : { data: emptyPeerSet(), freshness: freshness("unavailable", null, null, "Loads with Comps") };
   const risks = section === "risks"
     ? await loadRisks(ticker, financials.data, forceRefresh)

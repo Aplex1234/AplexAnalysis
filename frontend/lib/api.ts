@@ -19,6 +19,7 @@ async function requestAnalysis(ticker: string, signal: AbortSignal | undefined, 
   const query = params.size ? `?${params}` : "";
   const response = await fetch(`${API_URL}/companies/${encodeURIComponent(ticker)}/analysis${query}`, {
     signal,
+    cache: forceRefresh ? "no-store" : undefined,
   });
   return parseResponse(response);
 }

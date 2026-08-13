@@ -85,7 +85,7 @@ test("routes a cold Overview through the lightweight shared-cache pipeline", asy
   const route = await readFile(new URL("../app/api/v1/companies/[ticker]/analysis/route.ts", import.meta.url), "utf8");
   const service = await readFile(new URL("../lib/server/analysis-service.ts", import.meta.url), "utf8");
   assert.match(route, /rebuildOverviewFromComponentCaches/);
-  assert.match(route, /overviewOnly\s*\?\s*await rebuildOverviewFromComponentCaches\(normalizedTicker\)/);
+  assert.match(route, /overviewOnly\s*\?\s*await rebuildOverviewFromComponentCaches\(normalizedTicker, forceRefresh\)/);
   const overviewBuilder = service.match(/export async function rebuildOverviewFromComponentCaches[\s\S]*?\n}\n/)?.[0] ?? "";
   assert.match(overviewBuilder, /loadFinancials/);
   assert.match(overviewBuilder, /loadQuote/);
@@ -109,6 +109,18 @@ test("uses canonical tickers and current component caches for requested sections
   assert.match(route, /normalizeTicker\(ticker\)/);
   assert.match(route, /forceRefresh \|\| requestedSection \? null : await readCachedAnalysis/);
   assert.match(route, /rebuildAnalysisSectionFromComponentCaches\(normalizedTicker, requestedSection, forceRefresh\)/);
+});
+
+test("provides a manual company refresh that bypasses the relevant component caches", async () => {
+  const route = await readFile(new URL("../app/api/v1/companies/[ticker]/analysis/route.ts", import.meta.url), "utf8");
+  const service = await readFile(new URL("../lib/server/analysis-service.ts", import.meta.url), "utf8");
+  const component = await readFile(new URL("../../frontend/components/ResearchTerminal.tsx", import.meta.url), "utf8");
+  assert.match(component, />Refresh data<|Refreshing data/);
+  assert.match(component, /fetchAnalysis\(refreshTicker, undefined, refreshSection, true\)/);
+  assert.match(route, /rebuildOverviewFromComponentCaches\(normalizedTicker, forceRefresh\)/);
+  assert.match(route, /forceRefresh \? "no-store"/);
+  assert.match(service, /loadFinancials\(ticker, forceRefresh\)/);
+  assert.match(service, /loadQuote\(ticker, financials\.data, forceRefresh\)/);
 });
 
 test("keeps deferred-section loading and errors scoped to the requested page", () => {

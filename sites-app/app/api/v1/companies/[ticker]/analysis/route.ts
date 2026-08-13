@@ -86,7 +86,7 @@ export async function GET(request: Request, context: { params: Promise<{ ticker:
     }
 
     const analysis = overviewOnly
-      ? await rebuildOverviewFromComponentCaches(normalizedTicker)
+      ? await rebuildOverviewFromComponentCaches(normalizedTicker, forceRefresh)
       : requestedSection
         ? await rebuildAnalysisSectionFromComponentCaches(normalizedTicker, requestedSection, forceRefresh)
         : await rebuildAnalysisFromComponentCaches(normalizedTicker);
@@ -95,7 +95,7 @@ export async function GET(request: Request, context: { params: Promise<{ ticker:
     const generatedAt = analysis.provenance.generated_at;
     const etag = `W/"analysis-${normalizedTicker}-${responseScope}-${generatedAt}-live"`;
     const headers = {
-      "Cache-Control": "public, max-age=30, s-maxage=300, stale-while-revalidate=600",
+      "Cache-Control": forceRefresh ? "no-store" : "public, max-age=30, s-maxage=300, stale-while-revalidate=600",
       ETag: etag,
       "Server-Timing": `app;dur=${Date.now() - requestStartedAt}`,
     };
