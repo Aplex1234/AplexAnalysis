@@ -14,6 +14,7 @@ import { buildAnalysis, fetchCompanyRisks } from "../lib/server/analysis.ts";
 import { ANALYSIS_SCHEMA_VERSION, COMPONENT_SOURCE_VERSIONS, NORMALIZATION_VERSION, SCORE_MODEL_VERSION, VALUATION_MODEL_VERSION } from "../lib/server/model-versions.ts";
 import { extractPeerBusinessContext, rankPeerCandidates } from "../lib/server/peer-selection.ts";
 import { fetchCompanyNews } from "../lib/server/news.ts";
+import { parseSecurityMaster, searchSecurityEntries } from "../lib/server/security-master.ts";
 
 async function render() {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -38,6 +39,98 @@ test("keeps the initial terminal and stylesheet within performance budgets", asy
   const cssSizes = await Promise.all(stylesheets.filter((file) => file.endsWith(".css")).map(async (file) => (await stat(new URL(file, cssDirectory))).size));
   assert.ok(terminalSize < 100 * 1024, `ResearchTerminal exceeded 100 KB: ${terminalSize}`);
   assert.ok(Math.max(...cssSizes) < 400 * 1024, `Stylesheet exceeded 400 KB: ${Math.max(...cssSizes)}`);
+});
+
+test("keeps valuation outputs per-share when SEC share counts are unavailable", async () => {
+  const makePeriod = (fiscalYear, values) => ({
+    fiscal_year: fiscalYear,
+    period_type: "FY",
+    period_end: `${fiscalYear}-12-31`,
+    filed_at: `${fiscalYear + 1}-02-28`,
+    accession_number: `brk-${fiscalYear}`,
+    form: "10-K",
+    currency: "USD",
+    values,
+    provenance: {},
+  });
+  const price = 500;
+  const marketCap = 1_000_000_000_000;
+  const analysis = await buildAnalysis("BRK-B", undefined, {
+    financials: {
+      profile: {
+        cik: "0001067983",
+        name: "Berkshire Hathaway Inc.",
+        sector: "Financials",
+        industry: "Multi-Sector Holdings",
+        exchange: "NYSE",
+        description: "Berkshire owns a diversified group of operating businesses.",
+        description_source: "Test fixture",
+        description_source_url: "https://www.sec.gov/edgar/browse/?CIK=1067983&owner=exclude",
+      },
+      periods: [
+        makePeriod(2024, {
+          revenue: 360_000_000_000,
+          gross_profit: 90_000_000_000,
+          operating_income: 45_000_000_000,
+          net_income: 60_000_000_000,
+          operating_cash_flow: 48_000_000_000,
+          capex: 8_000_000_000,
+          free_cash_flow: 40_000_000_000,
+          cash: 160_000_000_000,
+          long_term_debt: 120_000_000_000,
+          equity: 560_000_000_000,
+        }),
+        makePeriod(2025, {
+          revenue: 380_000_000_000,
+          gross_profit: 96_000_000_000,
+          operating_income: 50_000_000_000,
+          net_income: 67_000_000_000,
+          operating_cash_flow: 53_000_000_000,
+          capex: 9_000_000_000,
+          free_cash_flow: 44_000_000_000,
+          cash: 180_000_000_000,
+          long_term_debt: 125_000_000_000,
+          equity: 620_000_000_000,
+        }),
+      ],
+      quarterlyPeriods: [],
+      filings: [],
+      filingRisks: [],
+    },
+    quote: {
+      price,
+      market_cap: marketCap,
+      as_of: "2026-08-13T00:00:00.000Z",
+      currency: "USD",
+      provider: "Test quote",
+      source_url: null,
+      is_delayed: true,
+    },
+    peerSet: {
+      companies: [],
+      methodology: "Test fixture",
+      source_provider: "Test fixture",
+      source_url: "https://example.com/peers",
+      source_as_of: "2026-08-13T00:00:00.000Z",
+      candidates_considered: 0,
+      selection_version: "test",
+    },
+    analystEstimates: {
+      quarterly: [],
+      annual: [],
+      provider: "Test fixture",
+      as_of: null,
+      source_url: "https://example.com/estimates",
+      disclosure: "Test fixture",
+    },
+  });
+
+  assert.equal(analysis.financials.at(-1).values.diluted_shares, undefined);
+  assert.equal(analysis.financials.at(-1).values.shares_outstanding, undefined);
+  assert.ok(analysis.valuation.methods.dcf > 0);
+  assert.ok(analysis.valuation.methods.dcf < 100_000, "DCF must be a per-share value, not total equity value");
+  assert.ok(analysis.valuation.methods.comparable_companies > 0, "implied quote share count should support per-share multiples");
+  assert.ok(analysis.headline.fair_value < 100_000, "headline fair value must remain in per-share units");
 });
 
 test("server-renders the AplexAnalysis terminal", async () => {
@@ -336,6 +429,106 @@ test("uses products and business models to separate companies inside a broad sof
   assert.deepEqual(ranked.map((company) => company.ticker), ["CRM", "ADSK"]);
   assert.ok((ranked.find((company) => company.ticker === "ADSK")?.selectionScore ?? 0) > (ranked.find((company) => company.ticker === "XYZ")?.selectionScore ?? 0));
   assert.ok(ranked.find((company) => company.ticker === "ADSK")?.selectionReason.includes("creative, design and digital-content tools"));
+});
+
+test("requires product overlap and reasonable scale for automatic automotive peers", () => {
+  const target = {
+    ticker: "TSLA",
+    name: "Tesla, Inc.",
+    sector: "Consumer Discretionary",
+    industry: "Auto Manufacturing",
+    marketCap: 800_000_000_000,
+    description: "Tesla designs and manufactures electric vehicles, automobiles, batteries and charging products.",
+  };
+  const ranked = rankPeerCandidates(target, [
+    {
+      ticker: "GM", name: "General Motors Company", sector: "Consumer Discretionary", industry: "Auto Manufacturing", marketCap: 55_000_000_000,
+      description: "General Motors designs and manufactures automobiles and electric vehicles for consumers and fleets.",
+    },
+    {
+      ticker: "F", name: "Ford Motor Company", sector: "Consumer Discretionary", industry: "Auto Manufacturing", marketCap: 45_000_000_000,
+      description: "Ford manufactures automobiles, trucks and electric vehicles for retail and commercial customers.",
+    },
+    {
+      ticker: "RIVN", name: "Rivian Automotive, Inc.", sector: "Consumer Discretionary", industry: "Auto Manufacturing", marketCap: 15_000_000_000,
+      description: "Rivian designs and manufactures electric vehicles for consumer and commercial customers.",
+    },
+    {
+      ticker: "WKHS", name: "Workhorse Group Inc.", sector: "Consumer Discretionary", industry: "Auto Manufacturing", marketCap: 120_000_000,
+      description: "Workhorse manufactures electric commercial vehicles and delivery trucks.",
+    },
+    {
+      ticker: "DXYZ", name: "Digital Currency X Technology Inc.", sector: "Consumer Discretionary", industry: "Auto Manufacturing", marketCap: 3_000_000_000,
+      description: "Digital Currency X operates cryptocurrency infrastructure, enterprise servers and data-center systems.",
+    },
+  ]);
+
+  assert.deepEqual(ranked.map((company) => company.ticker), ["GM", "F", "RIVN"]);
+});
+
+test("rejects tiny consumer-electronics matches without a comparable business model", () => {
+  const target = {
+    ticker: "AAPL",
+    name: "Apple Inc.",
+    sector: "Technology",
+    industry: "Consumer Electronics",
+    marketCap: 3_400_000_000_000,
+    description: "Apple sells smartphones, personal computers, tablets, wearables and related consumer services.",
+  };
+  const ranked = rankPeerCandidates(target, [
+    {
+      ticker: "DELL", name: "Dell Technologies Inc.", sector: "Technology", industry: "Computer Manufacturing", marketCap: 90_000_000_000,
+      description: "Dell sells personal computers and workstations to consumers and commercial customers.",
+      reviewedReason: "Selected because Apple and Dell both sell personal computers to consumer and commercial customers.",
+    },
+    {
+      ticker: "HPQ", name: "HP Inc.", sector: "Technology", industry: "Computer Manufacturing", marketCap: 30_000_000_000,
+      description: "HP sells personal computers, workstations and peripherals to consumers and commercial customers.",
+      reviewedReason: "Selected because Apple and HP both sell personal computers to consumer and commercial customers.",
+    },
+    {
+      ticker: "OSS", name: "One Stop Systems, Inc.", sector: "Technology", industry: "Consumer Electronics", marketCap: 95_000_000,
+      description: "One Stop Systems builds rugged edge-computing servers for defense and industrial customers.",
+    },
+    {
+      ticker: "ZEPP", name: "Zepp Health Corporation", sector: "Technology", industry: "Consumer Electronics", marketCap: 190_000_000,
+      description: "Zepp Health sells smart wearables and digital health products.",
+    },
+  ]);
+
+  assert.deepEqual(ranked.map((company) => company.ticker).sort(), ["DELL", "HPQ"]);
+});
+
+test("keeps diversified Microsoft peers when a core software or cloud business overlaps", () => {
+  const target = {
+    ticker: "MSFT",
+    name: "Microsoft Corporation",
+    sector: "Technology",
+    industry: "Computer Software: Prepackaged Software",
+    marketCap: 3_800_000_000_000,
+    description: "Microsoft sells enterprise software subscriptions, productivity applications and cloud-computing services.",
+    primaryDescription: "Microsoft sells enterprise software subscriptions, productivity applications and cloud-computing services.",
+  };
+  const ranked = rankPeerCandidates(target, [
+    {
+      ticker: "ORCL", name: "Oracle Corporation", sector: "Technology", industry: "Computer Software: Prepackaged Software", marketCap: 900_000_000_000,
+      description: "Oracle sells enterprise software subscriptions, database software and cloud-computing services.",
+    },
+    {
+      ticker: "CRM", name: "Salesforce, Inc.", sector: "Technology", industry: "Computer Software: Prepackaged Software", marketCap: 250_000_000_000,
+      description: "Salesforce sells enterprise applications and subscription software for customer relationship management.",
+    },
+    {
+      ticker: "GOOGL", name: "Alphabet Inc.", sector: "Technology", industry: "Computer Software: Prepackaged Software", marketCap: 3_000_000_000_000,
+      description: "Alphabet provides cloud-computing services, productivity software and a large digital advertising platform.",
+    },
+    {
+      ticker: "GAME", name: "Small Game Publisher", sector: "Technology", industry: "Computer Software: Prepackaged Software", marketCap: 300_000_000,
+      description: "The company publishes mobile games and interactive entertainment.",
+    },
+  ]);
+
+  assert.deepEqual(ranked.map((company) => company.ticker).sort(), ["CRM", "GOOGL", "ORCL"]);
 });
 
 test("extracts product and customer context from a target annual filing", () => {
@@ -993,6 +1186,20 @@ test("searches the SEC security universe with stable listing identities", async 
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("ranks an exact company brand ahead of longer lookalike names", () => {
+  const entries = parseSecurityMaster({
+    fields: ["cik", "name", "ticker", "exchange"],
+    data: [
+      [2010630, "Apple iSports Group, Inc.", "AAPI", "Nasdaq"],
+      [320193, "Apple Inc.", "AAPL", "Nasdaq"],
+    ],
+  });
+
+  const results = searchSecurityEntries(entries, "apple", 8);
+  assert.equal(results[0]?.ticker, "AAPL");
+  assert.equal(results[0]?.name, "Apple Inc.");
 });
 
 test("serves a complete AAPL analysis through the hosted API", async () => {

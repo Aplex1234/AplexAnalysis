@@ -317,6 +317,12 @@ type ReviewedPeer = {
 };
 
 const seeds = (...tickers: string[]): ReviewedPeer[] => tickers.map((ticker) => ({ ticker }));
+const reviewedNasdaqPeers = (...peers: [ticker: string, reason: string][]): ReviewedPeer[] => peers.map(([ticker, reason]) => ({
+  ticker,
+  reason,
+  evidenceLabel: "Reviewed Nasdaq company profiles",
+  evidenceUrl: `https://www.nasdaq.com/market-activity/stocks/${ticker.toLowerCase()}/company-profile`,
+}));
 const REVIEWED_PEERS: Record<string, ReviewedPeer[]> = {
   ADBE: [
     {
@@ -338,7 +344,11 @@ const REVIEWED_PEERS: Record<string, ReviewedPeer[]> = {
       evidenceUrl: "https://www.sec.gov/Archives/edgar/data/796343/000079634326000003/adbe-20251128.htm",
     },
   ],
-  AAPL: seeds("DELL", "HPQ", "MSFT"),
+  AAPL: reviewedNasdaqPeers(
+    ["DELL", "Selected because Apple and Dell both sell personal computers and related hardware to consumer and commercial customers."],
+    ["HPQ", "Selected because Apple and HP both sell personal computers and related devices through consumer and commercial channels."],
+    ["SONY", "Selected because Apple and Sony both sell premium consumer devices and digital services to global consumer markets."],
+  ),
   AMZN: seeds("WMT", "COST", "EBAY"),
   COST: seeds("WMT", "TGT", "BJ"),
   DELL: [
@@ -369,7 +379,11 @@ const REVIEWED_PEERS: Record<string, ReviewedPeer[]> = {
   MA: seeds("V", "AXP", "PYPL"),
   MCD: seeds("YUM", "SBUX", "QSR"),
   META: seeds("GOOGL", "SNAP", "PINS"),
-  MSFT: seeds("ORCL", "GOOGL", "CRM"),
+  MSFT: reviewedNasdaqPeers(
+    ["ORCL", "Selected because Microsoft and Oracle both sell enterprise software, database products and cloud infrastructure through recurring commercial relationships."],
+    ["CRM", "Selected because Microsoft and Salesforce both sell subscription enterprise applications, analytics and customer-workflow software to organizations."],
+    ["GOOGL", "Selected because Microsoft and Alphabet both operate hyperscale cloud platforms and sell productivity software and digital services."],
+  ),
   NFLX: seeds("DIS", "WBD", "PARA"),
   NVDA: seeds("AMD", "AVGO", "QCOM"),
   PANW: [
@@ -394,7 +408,11 @@ const REVIEWED_PEERS: Record<string, ReviewedPeer[]> = {
   ],
   PEP: seeds("KO", "KDP", "MNST"),
   SMCI: seeds("DELL", "HPE", "CSCO"),
-  TSLA: seeds("GM", "F", "RIVN"),
+  TSLA: reviewedNasdaqPeers(
+    ["GM", "Selected because Tesla and General Motors both manufacture passenger vehicles and compete in electric vehicles for consumer and fleet customers."],
+    ["F", "Selected because Tesla and Ford both manufacture passenger and commercial vehicles and compete in electric vehicles and related services."],
+    ["RIVN", "Selected because Tesla and Rivian both design electric vehicles, sell directly to customers and build charging and connected-vehicle ecosystems."],
+  ),
   V: seeds("MA", "AXP", "PYPL"),
 };
 
@@ -459,7 +477,15 @@ function calculateMetrics(periods: Period[], price: number, quotedMarketCap?: nu
   };
 }
 
-function dcfValue(periods: Period[], growth: number, margin: number, wacc: number, terminalGrowth: number, years: number) {
+function dcfValue(
+  periods: Period[],
+  growth: number,
+  margin: number,
+  wacc: number,
+  terminalGrowth: number,
+  years: number,
+  shares: number,
+) {
   const latest = periods.at(-1)!.values;
   let revenue = latest.revenue ?? 0;
   let presentValue = 0;
@@ -473,11 +499,10 @@ function dcfValue(periods: Period[], growth: number, margin: number, wacc: numbe
   const debt = latest.total_debt ?? latest.long_term_debt ?? 0;
   const liquidAssets = latest.cash_and_investments ?? latest.cash ?? 0;
   const netDebt = latest.net_debt ?? debt - liquidAssets;
-  const shares = latest.shares_outstanding ?? latest.diluted_shares ?? 1;
   return Math.max((presentValue + terminal / (1 + wacc) ** years - netDebt) / shares, 0);
 }
 
-function reverseDcf(periods: Period[], price: number, margin: number, assumptions: Assumptions) {
+function reverseDcf(periods: Period[], price: number, margin: number, assumptions: Assumptions, shares: number) {
   let low = -0.2;
   let high = 0.6;
   for (let index = 0; index < 70; index += 1) {
@@ -489,6 +514,7 @@ function reverseDcf(periods: Period[], price: number, margin: number, assumption
       assumptions.wacc,
       assumptions.terminal_growth,
       assumptions.forecast_years,
+      shares,
     );
     if (value < price) low = midpoint;
     else high = midpoint;
@@ -504,12 +530,22 @@ function calculateValuation(
   peers: ComparableCompany[],
 ) {
   const latest = periods.at(-1)!.values;
+  const quoteImpliedShares = divide(metrics.market_cap, price);
+  const reportedShares = latest.shares_outstanding ?? latest.diluted_shares;
+  const shares = quoteImpliedShares != null && quoteImpliedShares > 0
+    ? quoteImpliedShares
+    : reportedShares != null && reportedShares > 0
+      ? reportedShares
+      : null;
+  if (shares == null) {
+    throw new Error("Per-share valuation requires a positive quote-implied or SEC-reported share count");
+  }
   const growth = assumptions.revenue_growth ?? clamp(metrics.revenue_cagr ?? 0.05, 0.02, 0.25);
   const margin = assumptions.fcf_margin ?? clamp(metrics.fcf_margin ?? 0.08, 0.02, 0.45);
-  const pureDcf = dcfValue(periods, growth, margin, assumptions.wacc, assumptions.terminal_growth, assumptions.forecast_years);
-  const bear = dcfValue(periods, clamp(growth - 0.04, -0.1, 0.4), clamp(margin * 0.86, 0.01, 0.55), assumptions.wacc + 0.015, Math.max(assumptions.terminal_growth - 0.005, 0), assumptions.forecast_years);
-  const bull = dcfValue(periods, clamp(growth + 0.04, -0.05, 0.45), clamp(margin * 1.1, 0.01, 0.58), Math.max(assumptions.wacc - 0.01, 0.05), Math.min(assumptions.terminal_growth + 0.005, 0.05), assumptions.forecast_years);
-  const eps = divide(latest.net_income, latest.diluted_shares) ?? 0;
+  const pureDcf = dcfValue(periods, growth, margin, assumptions.wacc, assumptions.terminal_growth, assumptions.forecast_years, shares);
+  const bear = dcfValue(periods, clamp(growth - 0.04, -0.1, 0.4), clamp(margin * 0.86, 0.01, 0.55), assumptions.wacc + 0.015, Math.max(assumptions.terminal_growth - 0.005, 0), assumptions.forecast_years, shares);
+  const bull = dcfValue(periods, clamp(growth + 0.04, -0.05, 0.45), clamp(margin * 1.1, 0.01, 0.58), Math.max(assumptions.wacc - 0.01, 0.05), Math.min(assumptions.terminal_growth + 0.005, 0.05), assumptions.forecast_years, shares);
+  const eps = divide(latest.net_income, shares) ?? 0;
   const targetPe = clamp(18 + growth * 55 + (metrics.roic ?? 0) * 18, 12, 42);
   const growthValue = eps * targetPe;
   const peerMultiples = peers
@@ -518,7 +554,7 @@ function calculateValuation(
   const comparable = eps * (peerMultiples.length ? median(peerMultiples) : targetPe);
   const normalized = eps * clamp(targetPe * 0.92, 12, 38);
   const fairValue = pureDcf * 0.55 + comparable * 0.2 + growthValue * 0.15 + normalized * 0.1;
-  const impliedGrowth = reverseDcf(periods, price, margin, assumptions);
+  const impliedGrowth = reverseDcf(periods, price, margin, assumptions, shares);
   const growthProjection = calculatePegProjection(periods, metrics.pe, growth);
   return {
     current_price: price,

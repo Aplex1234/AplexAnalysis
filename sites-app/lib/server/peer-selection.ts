@@ -1,6 +1,8 @@
-export const PEER_SELECTION_VERSION = "peer-selection-2.8";
+export const PEER_SELECTION_VERSION = "peer-selection-3.0";
 export const NASDAQ_PEER_SOURCE_LABEL = "Nasdaq Stock Screener and company profiles";
 export const NASDAQ_PEER_SOURCE_URL = "https://www.nasdaq.com/market-activity/stocks/screener";
+export const MIN_AUTOMATIC_PEER_SCORE = 42;
+const MAX_AUTOMATIC_SIZE_RATIO = 250;
 
 export type PeerCandidateInput = {
   ticker: string;
@@ -49,7 +51,8 @@ const BUSINESS_FACETS = [
   { label: "storage and data infrastructure", keywords: ["storage", "solid state", "ssd", "flash memory", "data infrastructure"] },
   { label: "networking products", keywords: ["networking", "network equipment", "router", "switching", "connectivity infrastructure"] },
   { label: "semiconductor products", keywords: ["semiconductor", "processor", "chip", "integrated circuit", "gpu", "microprocessor"] },
-  { label: "enterprise software and subscriptions", keywords: ["enterprise software", "software subscription", "software-as-a-service", "saas", "cloud software", "database software"] },
+  { label: "enterprise software and subscriptions", keywords: ["enterprise software", "software subscription", "subscription software", "software-as-a-service", "saas", "cloud software", "database software", "enterprise application"] },
+  { label: "workplace productivity software", keywords: ["productivity software", "productivity application", "office productivity", "collaboration software", "workplace software"] },
   { label: "creative, design and digital-content tools", keywords: ["creative software", "creative tools", "creativity", "creative professional", "creator", "design platform", "design software", "digital media", "content creation", "imaging", "video editing", "3d design"] },
   { label: "document workflows and electronic signatures", keywords: ["pdf", "document cloud", "document workflow", "document management", "electronic signature", "e-signature", "digital signature", "agreement cloud", "agreement management"] },
   { label: "engineering and product-design software", keywords: ["computer aided design", "cad software", "engineering design", "electronic design", "design automation", "architecture engineering", "digital twin"] },
@@ -174,6 +177,11 @@ function sizeScore(targetCap: number | null, candidateCap: number | null) {
   return Math.max(0, 10 * (1 - distance / Math.log(100)));
 }
 
+function sizeRatio(targetCap: number | null, candidateCap: number | null) {
+  if (!targetCap || !candidateCap || targetCap <= 0 || candidateCap <= 0) return null;
+  return Math.max(targetCap, candidateCap) / Math.min(targetCap, candidateCap);
+}
+
 function reasonFor(
   target: PeerTargetInput,
   candidate: PeerCandidateInput,
@@ -227,13 +235,16 @@ export function rankPeerCandidates(target: PeerTargetInput, candidates: PeerCand
     })
     .filter((candidate) => {
       if (candidate.reviewedReason) return true;
-      if (candidate.selectionScore < 18) return false;
-      if (!targetHasBroadIndustry) return true;
-      if (!candidate.description) return true;
+      if (candidate.selectionScore < MIN_AUTOMATIC_PEER_SCORE) return false;
+      const industry = industryScore(target.industry, candidate.industry);
+      if (!industry.related) return false;
+      if (!target.description || !candidate.description) return false;
+      if (sharedFacets(target, candidate).length === 0) return false;
+      const ratio = sizeRatio(target.marketCap, candidate.marketCap);
+      if (ratio != null && ratio > MAX_AUTOMATIC_SIZE_RATIO) return false;
+      if (!targetHasBroadIndustry || targetPrimaryDomains.size === 0) return true;
       const candidateDomains = businessDomains(candidate.description);
-      if (targetPrimaryDomains.size > 0 && !candidateDomains.some((domain) => targetPrimaryDomains.has(domain))) return false;
-      if (candidateDomains.some((domain) => !targetPrimaryDomains.has(domain))) return false;
-      return sharedFacets(target, candidate).length > 0;
+      return candidateDomains.length === 0 || candidateDomains.some((domain) => targetPrimaryDomains.has(domain));
     })
     .sort((a, b) => b.selectionScore - a.selectionScore || (b.marketCap ?? 0) - (a.marketCap ?? 0));
 }

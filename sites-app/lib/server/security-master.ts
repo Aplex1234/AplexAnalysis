@@ -32,6 +32,11 @@ const FALLBACK_ROWS: Array<[number, string, string, string]> = [
   [1141391, "Mastercard Incorporated", "MA", "NYSE"],
 ];
 
+const COMPANY_LEGAL_SUFFIXES = new Set([
+  "AG", "CO", "COMPANY", "CORP", "CORPORATION", "INC", "INCORPORATED",
+  "LIMITED", "LLC", "LLP", "LP", "LTD", "NV", "PBC", "PLC", "SA", "SE",
+]);
+
 let cachedMaster: { expiresAt: number; entries: SecuritySearchResult[] } | null = null;
 
 export function normalizeTicker(value: string): string {
@@ -40,6 +45,12 @@ export function normalizeTicker(value: string): string {
 
 function identifierToken(value: string): string {
   return value.toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase();
+}
+
+function baseCompanyName(value: string): string {
+  const tokens = value.toUpperCase().match(/[A-Z0-9]+/g) ?? [];
+  while (tokens.length > 1 && COMPANY_LEGAL_SUFFIXES.has(tokens[tokens.length - 1])) tokens.pop();
+  return tokens.join(" ");
 }
 
 function securityIdentity(
@@ -95,15 +106,17 @@ export function searchSecurityEntries(
   const needle = query.trim().toUpperCase();
   const tickerNeedle = normalizeTicker(query);
   const compactNeedle = identifierToken(query);
+  const baseNameNeedle = baseCompanyName(query);
 
   return entries
     .flatMap((entry) => {
       const compactTicker = identifierToken(entry.ticker);
       const upperName = entry.name.toUpperCase();
+      const baseName = baseCompanyName(entry.name);
       let rank: number;
       if (entry.ticker === tickerNeedle || compactTicker === compactNeedle) rank = 0;
       else if (entry.ticker.startsWith(tickerNeedle) || compactTicker.startsWith(compactNeedle)) rank = 1;
-      else if (upperName === needle) rank = 2;
+      else if (upperName === needle || baseName === baseNameNeedle) rank = 2;
       else if (upperName.startsWith(needle)) rank = 3;
       else if (upperName.includes(needle)) rank = 4;
       else return [];
