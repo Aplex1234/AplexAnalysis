@@ -36,8 +36,13 @@ export type NormalizedPeriod = {
 
 type MetricDefinition = {
   period: "duration" | "instant";
-  unit: "USD" | "shares";
+  unit: "USD" | "shares" | "USD/shares";
   tags: string[];
+};
+
+type StockSplitEvent = {
+  effectiveDate: string;
+  ratio: number;
 };
 
 const ANNUAL_FORMS = new Set(["10-K", "20-F", "40-F"]);
@@ -171,6 +176,11 @@ const METRICS: Record<string, MetricDefinition> = {
     period: "duration",
     unit: "shares",
     tags: ["WeightedAverageNumberOfDilutedSharesOutstanding"],
+  },
+  diluted_eps: {
+    period: "duration",
+    unit: "USD/shares",
+    tags: ["EarningsPerShareDiluted"],
   },
   shares_outstanding: {
     period: "instant",
@@ -306,6 +316,60 @@ function setDerivedValue(
   provenance[key] = { formula };
 }
 
+function stockSplitEvents(facts: Record<string, SecFact>): StockSplitEvent[] {
+  const rows = facts.StockholdersEquityNoteStockSplitConversionRatio1?.units?.pure ?? [];
+  const events = rows
+    .map((point) => ({ effectiveDate: String(point.end ?? ""), ratio: Number(point.val) }))
+    .filter((event) => event.effectiveDate && Number.isFinite(event.ratio) && event.ratio > 0 && event.ratio !== 1)
+    .sort((left, right) => left.effectiveDate.localeCompare(right.effectiveDate));
+
+  const deduplicated: StockSplitEvent[] = [];
+  for (const event of events) {
+    const prior = deduplicated.at(-1);
+    const daysApart = prior
+      ? Math.abs((Date.parse(`${event.effectiveDate}T00:00:00Z`) - Date.parse(`${prior.effectiveDate}T00:00:00Z`)) / 86_400_000)
+      : Number.POSITIVE_INFINITY;
+    if (prior && prior.ratio === event.ratio && daysApart <= 180) {
+      deduplicated[deduplicated.length - 1] = event;
+    } else {
+      deduplicated.push(event);
+    }
+  }
+  return deduplicated;
+}
+
+function adjustMetricForStockSplits(
+  values: FinancialValues,
+  provenance: NormalizedPeriod["provenance"],
+  metric: "diluted_shares" | "shares_outstanding" | "diluted_eps",
+  events: StockSplitEvent[],
+  fallbackFiledAt: string | undefined,
+) {
+  const value = values[metric];
+  if (value == null || !Number.isFinite(value)) return;
+  const filedAt = provenance[metric]?.filed || fallbackFiledAt || "";
+  const applicable = events.filter((event) => !filedAt || filedAt < event.effectiveDate);
+  if (!applicable.length) return;
+  const factor = applicable.reduce((product, event) => product * event.ratio, 1);
+  values[metric] = metric === "diluted_eps" ? value / factor : value * factor;
+  const splitSummary = applicable.map((event) => `${event.ratio}x on ${event.effectiveDate}`).join(", ");
+  provenance[metric] = {
+    ...provenance[metric],
+    formula: `split-adjusted using ${splitSummary}`,
+  };
+}
+
+function adjustForStockSplits(
+  values: FinancialValues,
+  provenance: NormalizedPeriod["provenance"],
+  events: StockSplitEvent[],
+  fallbackFiledAt: string | undefined,
+) {
+  adjustMetricForStockSplits(values, provenance, "diluted_shares", events, fallbackFiledAt);
+  adjustMetricForStockSplits(values, provenance, "shares_outstanding", events, fallbackFiledAt);
+  adjustMetricForStockSplits(values, provenance, "diluted_eps", events, fallbackFiledAt);
+}
+
 function deriveFinancialValues(values: FinancialValues, provenance: NormalizedPeriod["provenance"]) {
   if (values.operating_cash_flow != null && values.capex != null) {
     setDerivedValue(
@@ -316,7 +380,7 @@ function deriveFinancialValues(values: FinancialValues, provenance: NormalizedPe
       "operating_cash_flow - abs(capex)",
     );
   }
-  if (values.net_income != null && values.diluted_shares) {
+  if (values.diluted_eps == null && values.net_income != null && values.diluted_shares) {
     setDerivedValue(
       values,
       provenance,
@@ -372,6 +436,7 @@ function deriveFinancialValues(values: FinancialValues, provenance: NormalizedPe
 
 export function normalizeCompanyFacts(payload: SecCompanyFacts): NormalizedPeriod[] {
   const facts = payload?.facts?.["us-gaap"] ?? {};
+  const splits = stockSplitEvents(facts);
   const years = new Map<
     number,
     { values: FinancialValues; provenance: NormalizedPeriod["provenance"]; meta: SecPoint }
@@ -409,6 +474,7 @@ export function normalizeCompanyFacts(payload: SecCompanyFacts): NormalizedPerio
       const values = bucket.values;
       const provenance = bucket.provenance;
 
+      adjustForStockSplits(values, provenance, splits, bucket.meta.filed);
       deriveFinancialValues(values, provenance);
 
       return {
@@ -436,6 +502,7 @@ export function normalizeCompanyFacts(payload: SecCompanyFacts): NormalizedPerio
 
 export function normalizeQuarterlyCompanyFacts(payload: SecCompanyFacts): NormalizedPeriod[] {
   const facts = payload?.facts?.["us-gaap"] ?? {};
+  const splits = stockSplitEvents(facts);
   const quarters = new Map<
     string,
     { fiscalYear: number; quarter: 1 | 2 | 3 | 4; values: FinancialValues; provenance: NormalizedPeriod["provenance"]; meta: SecPoint }
@@ -544,6 +611,7 @@ export function normalizeQuarterlyCompanyFacts(payload: SecCompanyFacts): Normal
   return [...quarters.values()]
     .sort((left, right) => left.fiscalYear - right.fiscalYear || left.quarter - right.quarter)
     .map((bucket) => {
+      adjustForStockSplits(bucket.values, bucket.provenance, splits, bucket.meta.filed);
       deriveFinancialValues(bucket.values, bucket.provenance);
       return {
         fiscal_year: bucket.fiscalYear,

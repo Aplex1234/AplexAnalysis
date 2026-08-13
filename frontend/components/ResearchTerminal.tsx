@@ -52,7 +52,7 @@ const NAV_ITEMS: Array<{ key: PageKey; label: string; icon: ComponentType<{ size
   { key: "news", label: "News", icon: Rss },
   { key: "filings", label: "Filings", icon: Document },
   { key: "risks", label: "Risks", icon: WarningAlt },
-  { key: "research", label: "AI Research", icon: Chat },
+  { key: "research", label: "AI Research · Preview", icon: Chat },
 ];
 
 const RECENT_SEARCHES_KEY = "aplex-recent-securities";
@@ -726,7 +726,7 @@ function OverviewView({ analysis }: { analysis: Analysis }) {
           <span>MODEL READ</span>
           <h3>{headline.rating} at {money(headline.current_price)}</h3>
         </div>
-        <p>{analysis.valuation.reverse_dcf.interpretation} The blended fair value uses four deterministic methods.</p>
+        <p>{analysis.valuation.reverse_dcf.interpretation} {analysis.valuation.methodology}</p>
       </section>
     </div>
   );
@@ -993,8 +993,44 @@ function EarningsView({ analysis }: { analysis: Analysis }) {
   return <div className="page-stack"><section className="split-section"><div><SectionHeading title="Latest annual momentum" detail={`Fiscal ${latest.fiscal_year} versus prior year`} /><div className="score-matrix"><MetricCell label="Revenue growth" value={percent(analysis.metrics.revenue_growth_yoy)} detail="year over year" /><MetricCell label="EPS growth" value={percent(analysis.metrics.eps_growth_yoy)} detail="year over year" /><MetricCell label="FCF growth" value={percent(analysis.metrics.fcf_growth_yoy)} detail="year over year" /><MetricCell label="FCF conversion" value={percent(analysis.metrics.fcf_conversion)} detail="of net income" /></div></div><div><SectionHeading title="Earnings quality" detail="Programmatic stability assessment" /><div className="big-stat">{analysis.score.categories.earnings_quality}/100</div><p className="body-copy">{analysis.metrics.earnings_positive_years} of {analysis.metrics.history_years} available years were profitable. Operating-margin variability was {percent(analysis.metrics.operating_margin_volatility)}.</p></div></section></div>;
 }
 
+function filingDateLabel(value: string | null) {
+  if (!value) return "Not available";
+  const date = new Date(`${value}T12:00:00Z`);
+  if (!Number.isFinite(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(date);
+}
+
+function fiscalPeriodForFiling(analysis: Analysis, filing: Analysis["filings"][number]) {
+  if (!filing.report_date) return filing.form === "8-K" ? "Not applicable" : "Not identified";
+  const period = [...analysis.financials, ...analysis.quarterly_financials]
+    .find((candidate) => candidate.period_end === filing.report_date);
+  if (!period) return filing.form === "8-K" ? "Not applicable" : "Not identified";
+  return period.fiscal_quarter ? `Q${period.fiscal_quarter} FY ${period.fiscal_year}` : `FY ${period.fiscal_year}`;
+}
+
 function FilingsView({ analysis }: { analysis: Analysis }) {
-  return <div className="page-stack"><section className="table-section"><SectionHeading title="SEC filings" detail="Primary documents from EDGAR" />{analysis.filings.length ? <table className="research-table"><thead><tr><th>Form</th><th>Filed</th><th>Report period</th><th>Accession</th><th>Source</th></tr></thead><tbody>{analysis.filings.map((filing) => <tr key={filing.accession_number}><th>{filing.form}</th><td>{filing.filing_date}</td><td>{filing.report_date || "N/A"}</td><td className="mono">{filing.accession_number}</td><td><a href={filing.source_url} target="_blank" rel="noreferrer">Open filing</a></td></tr>)}</tbody></table> : <div className="empty-state"><Document size={32} /><h3>No filing index in offline mode</h3><p>Financial statement provenance is still available per metric through the API.</p></div>}</section></div>;
+  return (
+    <div className="page-stack">
+      <section className="table-section">
+        <SectionHeading title="SEC filings" detail="Fiscal timing and submission dates are shown separately" />
+        {analysis.filings.length ? (
+          <table className="research-table">
+            <thead><tr><th>Fiscal period</th><th>Report period ending</th><th>Filing form</th><th>Filing date</th><th>Accession</th><th>Source</th></tr></thead>
+            <tbody>{analysis.filings.map((filing) => (
+              <tr key={filing.accession_number}>
+                <th>{fiscalPeriodForFiling(analysis, filing)}</th>
+                <td>{filingDateLabel(filing.report_date)}</td>
+                <td><Tag type="cool-gray">{filing.form}</Tag></td>
+                <td>{filingDateLabel(filing.filing_date)}</td>
+                <td className="mono">{filing.accession_number}</td>
+                <td><a href={filing.source_url} target="_blank" rel="noreferrer">Open filing</a></td>
+              </tr>
+            ))}</tbody>
+          </table>
+        ) : <div className="empty-state"><Document size={32} /><h3>No filing index in offline mode</h3><p>Financial statement provenance is still available per metric through the API.</p></div>}
+      </section>
+    </div>
+  );
 }
 
 function RisksView({ analysis, onRetry }: { analysis: Analysis; onRetry: () => void }) {
@@ -1058,5 +1094,5 @@ function RisksView({ analysis, onRetry }: { analysis: Analysis; onRetry: () => v
 
 function ResearchView({ analysis }: { analysis: Analysis }) {
   const prompts = ["Why are margins changing?", "What growth does the market price imply?", "What are the largest quantified risks?"];
-  return <div className="page-stack"><section className="research-empty"><Chat size={40} /><h3>Filing-grounded research chat</h3><p>The retrieval layer is scaffolded, but no LLM provider is configured in this milestone. Numerical analysis remains fully functional without AI.</p><div>{prompts.map((prompt) => <button key={prompt} type="button" disabled>{prompt}</button>)}</div><code>OPENAI_API_KEY=your_key</code><small>Next step: chunk SEC filing text, create embeddings and return answers with filing citations.</small></section><section className="thesis-strip"><div><span>AVAILABLE NOW</span><h3>Reverse DCF interpretation</h3></div><p>{analysis.valuation.reverse_dcf.interpretation}</p></section></div>;
+  return <div className="page-stack"><section className="research-empty"><Tag type="purple">PREVIEW</Tag><Chat size={40} /><h3>Filing-grounded AI Research preview</h3><p>This feature is not active yet. The retrieval layer is scaffolded, but no LLM provider is configured. Numerical analysis remains fully functional without AI.</p><div>{prompts.map((prompt) => <button key={prompt} type="button" disabled>{prompt}</button>)}</div><small>Planned: filing-grounded answers with direct SEC citations.</small></section><section className="thesis-strip"><div><span>AVAILABLE NOW</span><h3>Reverse DCF interpretation</h3></div><p>{analysis.valuation.reverse_dcf.interpretation}</p></section></div>;
 }

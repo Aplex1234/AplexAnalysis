@@ -28,6 +28,7 @@ export type MultipleValuationResult = {
   annualizedReturn: number | null;
   pegRatio: number | null;
   valuationLabel: "Undervalued" | "Fairly valued" | "Overvalued" | "Unavailable";
+  unavailableReason: string | null;
 };
 
 export type MultipleValuationSettings = {
@@ -66,8 +67,10 @@ export function projectMultipleValuation(input: MultipleValuationInput): Multipl
   let projectedEps: number | null = null;
   let projectedMarketCap: number | null = null;
   let projectedSharePrice: number | null = null;
+  const hasPositiveEarnings = projectedBasis != null && projectedBasis > 0;
+  const hasUsableMultiple = Number.isFinite(input.scenario.exitPe) && input.scenario.exitPe > 0;
 
-  if (input.basis === "net_income") {
+  if (input.basis === "net_income" && hasPositiveEarnings && hasUsableMultiple) {
     projectedNetIncome = projectedBasis;
     projectedMarketCap = projectedBasis == null ? null : projectedBasis * input.scenario.exitPe;
     projectedEps = projectedNetIncome != null && shares != null && shares > 0
@@ -76,7 +79,7 @@ export function projectMultipleValuation(input: MultipleValuationInput): Multipl
     projectedSharePrice = projectedMarketCap != null && shares != null && shares > 0
       ? projectedMarketCap / shares
       : null;
-  } else {
+  } else if (input.basis === "eps" && hasPositiveEarnings && hasUsableMultiple) {
     projectedEps = projectedBasis;
     projectedSharePrice = projectedBasis == null ? null : projectedBasis * input.scenario.exitPe;
     projectedNetIncome = projectedEps != null && shares != null ? projectedEps * shares : null;
@@ -95,7 +98,7 @@ export function projectMultipleValuation(input: MultipleValuationInput): Multipl
   const annualizedReturn = totalUpside != null && totalUpside > -1
     ? (1 + totalUpside) ** (1 / years) - 1
     : null;
-  const pegRatio = input.scenario.growthRate > 0
+  const pegRatio = hasPositiveEarnings && hasUsableMultiple && input.scenario.growthRate > 0
     ? input.scenario.exitPe / (input.scenario.growthRate * 100)
     : null;
 
@@ -109,6 +112,11 @@ export function projectMultipleValuation(input: MultipleValuationInput): Multipl
     annualizedReturn,
     pegRatio,
     valuationLabel: impliedValuationLabel(annualizedReturn),
+    unavailableReason: !hasPositiveEarnings
+      ? "A positive earnings base is required before a P/E valuation is meaningful."
+      : !hasUsableMultiple
+        ? "A positive exit P/E is required."
+        : null,
   };
 }
 

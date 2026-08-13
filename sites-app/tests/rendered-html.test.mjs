@@ -3,7 +3,9 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import test from "node:test";
 
 import { buildFinancialChartData, formatBillions } from "../../frontend/lib/chart.ts";
+import { compactShares } from "../../frontend/lib/format.ts";
 import { buildFinancialExplorerData, FINANCIAL_GROUPS } from "../../frontend/lib/financials.ts";
+import { projectMultipleValuation } from "../../frontend/lib/multiple-valuation.ts";
 import { analysisSectionPanelState, mergeAnalysisSection } from "../../frontend/lib/analysis-sections.ts";
 import { normalizeCompanyFacts, normalizeQuarterlyCompanyFacts } from "../lib/server/sec-normalizer.ts";
 import { calculatePegProjection } from "../lib/server/peg.ts";
@@ -131,6 +133,124 @@ test("keeps valuation outputs per-share when SEC share counts are unavailable", 
   assert.ok(analysis.valuation.methods.dcf < 100_000, "DCF must be a per-share value, not total equity value");
   assert.ok(analysis.valuation.methods.comparable_companies > 0, "implied quote share count should support per-share multiples");
   assert.ok(analysis.headline.fair_value < 100_000, "headline fair value must remain in per-share units");
+});
+
+test("does not present negative earnings multiples or fair values for a loss-making company", async () => {
+  const makePeriod = (fiscalYear, netIncome, freeCashFlow) => ({
+    fiscal_year: fiscalYear,
+    period_type: "FY",
+    period_end: `${fiscalYear}-12-31`,
+    filed_at: `${fiscalYear + 1}-02-28`,
+    accession_number: `loss-${fiscalYear}`,
+    form: "10-K",
+    currency: "USD",
+    values: {
+      revenue: 5_000_000_000,
+      operating_income: netIncome,
+      net_income: netIncome,
+      operating_cash_flow: freeCashFlow,
+      capex: 0,
+      free_cash_flow: freeCashFlow,
+      cash: 3_000_000_000,
+      total_debt: 1_000_000_000,
+      equity: 4_000_000_000,
+      diluted_shares: 1_000_000_000,
+      shares_outstanding: 1_000_000_000,
+    },
+    provenance: {},
+  });
+  const analysis = await buildAnalysis("LOSS", undefined, {
+    financials: {
+      profile: {
+        cik: "0000000002",
+        name: "Loss Company",
+        sector: "Industrials",
+        industry: "Manufacturing",
+        exchange: "NASDAQ",
+        description: "Loss Company manufactures products.",
+        description_source: "Test fixture",
+        description_source_url: "https://www.sec.gov/",
+      },
+      periods: [makePeriod(2024, -1_000_000_000, -200_000_000), makePeriod(2025, -800_000_000, -100_000_000)],
+      quarterlyPeriods: [],
+      filings: [],
+      filingRisks: [],
+    },
+    quote: {
+      price: 10,
+      market_cap: 10_000_000_000,
+      as_of: "2026-08-13T00:00:00.000Z",
+      currency: "USD",
+      provider: "Test quote",
+      source_url: null,
+      is_delayed: true,
+    },
+    peerSet: {
+      companies: [], methodology: "Test", source_provider: "Test", source_url: "https://example.com",
+      source_as_of: "2026-08-13T00:00:00.000Z", candidates_considered: 0, selection_version: "test",
+    },
+    analystEstimates: {
+      quarterly: [], annual: [], provider: "Test", as_of: null, source_url: "https://example.com", disclosure: "Test",
+    },
+  });
+
+  assert.equal(analysis.valuation.methods.comparable_companies, null);
+  assert.equal(analysis.valuation.methods.growth_adjusted, null);
+  assert.equal(analysis.valuation.methods.normalized_multiple, null);
+  assert.ok(analysis.headline.fair_value >= 0);
+  assert.ok(analysis.headline.bear_value >= 0);
+  assert.ok(analysis.headline.bull_value >= 0);
+
+  const multiple = projectMultipleValuation({
+    basis: "net_income",
+    forecastYears: 5,
+    currentNetIncome: -800_000_000,
+    currentEps: -0.8,
+    currentShares: 1_000_000_000,
+    currentPrice: 10,
+    currentMarketCap: 10_000_000_000,
+    annualShareChange: 0,
+    scenario: { growthRate: 0.15, exitPe: 20 },
+  });
+  assert.equal(multiple.projectedMarketCap, null);
+  assert.equal(multiple.projectedSharePrice, null);
+  assert.equal(multiple.valuationLabel, "Unavailable");
+});
+
+test("formats share counts as shares rather than currency", () => {
+  assert.equal(compactShares(14_700_000_000), "14.7B shares");
+  assert.equal(compactShares(null), "N/A");
+});
+
+test("adjusts historical shares and EPS across stock splits", () => {
+  const annual = (year, income, shares, filed) => ({
+    start: `${year}-01-01`, end: `${year}-12-31`, val: income, accn: `${year}-annual`, fy: year, fp: "FY", form: "10-K", filed,
+  });
+  const share = (year, shares, filed) => ({
+    start: `${year}-01-01`, end: `${year}-12-31`, val: shares, accn: `${year}-annual`, fy: year, fp: "FY", form: "10-K", filed,
+  });
+  const payload = {
+    cik: 1,
+    facts: { "us-gaap": {
+      NetIncomeLoss: { units: { USD: [annual(2022, 100, 100, "2023-02-01"), annual(2023, 120, 120, "2024-02-01"), annual(2024, 132, 132, "2025-02-01")] } },
+      WeightedAverageNumberOfDilutedSharesOutstanding: { units: { shares: [share(2022, 100, "2023-02-01"), share(2023, 120, "2024-02-01"), share(2024, 240, "2025-02-01")] } },
+      StockholdersEquityNoteStockSplitConversionRatio1: { units: { pure: [{ end: "2024-06-01", val: 2, accn: "split", fy: 2024, fp: "Q2", form: "10-Q", filed: "2024-08-01" }] } },
+    } },
+  };
+
+  const periods = normalizeCompanyFacts(payload);
+  assert.deepEqual(periods.map((period) => period.values.diluted_shares), [200, 240, 240]);
+  assert.deepEqual(periods.map((period) => period.values.diluted_eps), [0.5, 0.5, 0.55]);
+  assert.match(periods[0].provenance.diluted_shares.formula, /split-adjusted/i);
+});
+
+test("labels AI Research as preview and separates filing date concepts", async () => {
+  const component = await readFile(new URL("../../frontend/components/ResearchTerminal.tsx", import.meta.url), "utf8");
+  assert.match(component, /AI Research · Preview/);
+  assert.match(component, />Fiscal period</);
+  assert.match(component, />Report period ending</);
+  assert.match(component, />Filing form</);
+  assert.match(component, />Filing date</);
 });
 
 test("server-renders the AplexAnalysis terminal", async () => {

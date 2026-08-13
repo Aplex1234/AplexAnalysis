@@ -469,7 +469,9 @@ function calculateMetrics(periods: Period[], price: number, quotedMarketCap?: nu
       ? divide(marketCap, latest.net_income) ?? divide(price, eps ?? undefined)
       : null,
     price_to_book: latest.equity != null && latest.equity > 0 ? divide(marketCap, latest.equity) : null,
-    price_to_fcf: divide(marketCap, latest.free_cash_flow),
+    price_to_fcf: latest.free_cash_flow != null && latest.free_cash_flow > 0
+      ? divide(marketCap, latest.free_cash_flow)
+      : null,
     fcf_yield: divide(latest.free_cash_flow, marketCap),
     operating_margin_volatility: marginVolatility,
     earnings_positive_years: income.filter((value) => value > 0).length,
@@ -545,15 +547,18 @@ function calculateValuation(
   const pureDcf = dcfValue(periods, growth, margin, assumptions.wacc, assumptions.terminal_growth, assumptions.forecast_years, shares);
   const bear = dcfValue(periods, clamp(growth - 0.04, -0.1, 0.4), clamp(margin * 0.86, 0.01, 0.55), assumptions.wacc + 0.015, Math.max(assumptions.terminal_growth - 0.005, 0), assumptions.forecast_years, shares);
   const bull = dcfValue(periods, clamp(growth + 0.04, -0.05, 0.45), clamp(margin * 1.1, 0.01, 0.58), Math.max(assumptions.wacc - 0.01, 0.05), Math.min(assumptions.terminal_growth + 0.005, 0.05), assumptions.forecast_years, shares);
-  const eps = divide(latest.net_income, shares) ?? 0;
+  const eps = divide(latest.net_income, shares);
+  const hasPositiveEarnings = eps != null && eps > 0;
   const targetPe = clamp(18 + growth * 55 + (metrics.roic ?? 0) * 18, 12, 42);
-  const growthValue = eps * targetPe;
+  const growthValue = hasPositiveEarnings ? eps * targetPe : null;
   const peerMultiples = peers
     .map((peer) => peer.pe)
     .filter((value): value is number => value != null && Number.isFinite(value) && value > 0);
-  const comparable = eps * (peerMultiples.length ? median(peerMultiples) : targetPe);
-  const normalized = eps * clamp(targetPe * 0.92, 12, 38);
-  const fairValue = pureDcf * 0.55 + comparable * 0.2 + growthValue * 0.15 + normalized * 0.1;
+  const comparable = hasPositiveEarnings ? eps * (peerMultiples.length ? median(peerMultiples) : targetPe) : null;
+  const normalized = hasPositiveEarnings ? eps * clamp(targetPe * 0.92, 12, 38) : null;
+  const fairValue = hasPositiveEarnings
+    ? pureDcf * 0.55 + comparable! * 0.2 + growthValue! * 0.15 + normalized! * 0.1
+    : pureDcf;
   const impliedGrowth = reverseDcf(periods, price, margin, assumptions, shares);
   const growthProjection = calculatePegProjection(periods, metrics.pe, growth);
   return {
@@ -563,13 +568,18 @@ function calculateValuation(
     bull_value: Math.max(bull, fairValue),
     upside_to_fair_value: fairValue / price - 1,
     methods: { dcf: pureDcf, comparable_companies: comparable, growth_adjusted: growthValue, normalized_multiple: normalized },
+    earnings_multiple_status: hasPositiveEarnings
+      ? "available"
+      : "not meaningful while trailing earnings are zero or negative",
     assumptions: { ...assumptions, revenue_growth: growth, fcf_margin: margin },
     reverse_dcf: {
       implied_revenue_growth: impliedGrowth,
       interpretation: `The market price implies approximately ${(impliedGrowth * 100).toFixed(1)}% annual revenue growth over the explicit forecast period.`,
     },
     growth_projection: growthProjection,
-    methodology: "55% DCF, 20% peer P/E, 15% growth-adjusted P/E, 10% normalized P/E",
+    methodology: hasPositiveEarnings
+      ? "55% DCF, 20% peer P/E, 15% growth-adjusted P/E, 10% normalized P/E"
+      : "DCF only. P/E-based methods are not meaningful while trailing earnings are zero or negative.",
   };
 }
 

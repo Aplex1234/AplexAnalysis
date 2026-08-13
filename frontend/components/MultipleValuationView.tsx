@@ -14,7 +14,7 @@ import {
   YAxis,
 } from "recharts";
 
-import { compactMoney, money, percent } from "@/lib/format";
+import { compactMoney, compactShares, money, percent } from "@/lib/format";
 import { financialPeriodLabel } from "@/lib/financials";
 import {
   buildDefaultMultipleSettings,
@@ -117,6 +117,7 @@ function validSettings(value: unknown): value is MultipleValuationSettings {
 function metricFormat(value: number | null, metric: HistoryMetric) {
   if (value == null) return "N/A";
   if (metric === "eps") return money(value);
+  if (metric === "shares") return compactShares(value);
   if (metric === "margins") return percent(value);
   return compactMoney(value);
 }
@@ -125,6 +126,7 @@ function chartFormat(value: number | string, metric: HistoryMetric) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return "N/A";
   if (metric === "eps") return money(numeric);
+  if (metric === "shares") return compactShares(numeric);
   if (metric === "margins") return `${numeric.toFixed(1)}%`;
   return compactMoney(numeric);
 }
@@ -266,7 +268,7 @@ export function MultipleValuationView({ analysis }: { analysis: Analysis }) {
       <section className="valuation-current-strip">
         <div><span>Starting {settings.basis === "net_income" ? "net income" : "EPS"}</span><strong>{settings.basis === "net_income" ? compactMoney(current.netIncome) : money(current.eps)}</strong><small>{current.label}</small></div>
         <div><span>Historical CAGR</span><strong>{percent(basisCagr)}</strong><small>{annual.length} fiscal years available</small></div>
-        <div><span>Diluted shares</span><strong>{compactMoney(current.shares)}</strong><small>{percent(shareCagr)} historical CAGR</small></div>
+        <div><span>Diluted shares</span><strong>{compactShares(current.shares)}</strong><small>{percent(shareCagr)} historical CAGR</small></div>
         <div><span>Current market cap</span><strong>{compactMoney(analysis.metrics.market_cap)}</strong><small>{money(analysis.quote.price)} per share</small></div>
         <div className={`current-verdict ${valuationTone(base.valuationLabel)}`}><span>Base case</span><strong>{base.valuationLabel}</strong><small>{percent(base.annualizedReturn)} annual return</small></div>
       </section>
@@ -335,12 +337,12 @@ export function MultipleValuationView({ analysis }: { analysis: Analysis }) {
             return (
               <article key={key} className={`scenario-result ${key}`}>
                 <div className="scenario-result-heading"><span>{label}</span><strong className={valuationTone(result.valuationLabel)}>{result.valuationLabel}</strong></div>
-                <div className="scenario-primary-value"><span>Projected share price</span><strong>{money(result.projectedSharePrice)}</strong><small>{percent(result.totalUpside)} total upside</small></div>
+                <div className="scenario-primary-value"><span>Projected share price</span><strong>{money(result.projectedSharePrice)}</strong><small>{result.unavailableReason ?? `${percent(result.totalUpside)} total upside`}</small></div>
                 <dl>
                   <div><dt>Market cap</dt><dd>{compactMoney(result.projectedMarketCap)}</dd></div>
                   <div><dt>Net income</dt><dd>{compactMoney(result.projectedNetIncome)}</dd></div>
                   <div><dt>EPS</dt><dd>{money(result.projectedEps)}</dd></div>
-                  <div><dt>Diluted shares</dt><dd>{compactMoney(result.projectedShares)}</dd></div>
+                  <div><dt>Diluted shares</dt><dd>{compactShares(result.projectedShares)}</dd></div>
                   <div><dt>Annual return</dt><dd>{percent(result.annualizedReturn)}</dd></div>
                   <div><dt>PEG</dt><dd>{result.pegRatio == null ? "N/A" : result.pegRatio.toFixed(2)}</dd></div>
                 </dl>
@@ -403,7 +405,7 @@ export function MultipleValuationView({ analysis }: { analysis: Analysis }) {
                   <td>{compactMoney(periodValue(period, "net_income"))}</td>
                   <td><GrowthCell primary={growth("net_income", previous)} secondary={sequential ? growth("net_income", sequential) : undefined} /></td>
                   <td>{percent(marginValue(period, "net"))}</td>
-                  <td>{compactMoney(periodValue(period, "shares"))}</td>
+                  <td>{compactShares(periodValue(period, "shares"))}</td>
                   <td><GrowthCell primary={growth("shares", previous)} secondary={sequential ? growth("shares", sequential) : undefined} /></td>
                   <td>{metricFormat(periodValue(period, "eps"), "eps")}</td>
                   <td><GrowthCell primary={growth("eps", previous)} secondary={sequential ? growth("eps", sequential) : undefined} /></td>

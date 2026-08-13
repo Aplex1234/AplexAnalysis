@@ -168,7 +168,7 @@ export type Analysis = {
   latest: FinancialValues;
   metrics: Record<string, number | null>;
   valuation: {
-    methods: Record<string, number>;
+    methods: Record<string, number | null>;
     assumptions: DcfAssumptions;
     reverse_dcf: { implied_revenue_growth: number; interpretation: string };
     growth_projection: {
