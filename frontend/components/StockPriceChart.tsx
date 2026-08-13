@@ -49,6 +49,12 @@ const intradayAxisFormatter = new Intl.DateTimeFormat("en-US", {
   minute: "2-digit",
   timeZone: "America/New_York",
 });
+const marketSessionFormatter = new Intl.DateTimeFormat("en-US", {
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+  timeZone: "America/New_York",
+});
 const compactNumberFormatter = new Intl.NumberFormat("en-US", {
   notation: "compact",
   maximumFractionDigits: 1,
@@ -61,6 +67,14 @@ function readableDate(value: string): string {
 
 function readableIntradayTime(value: string): string {
   return intradayDateFormatter.format(new Date(value));
+}
+
+function isRegularMarketSession(value: string): boolean {
+  const parts = marketSessionFormatter.formatToParts(new Date(value));
+  const hour = Number(parts.find((part) => part.type === "hour")?.value ?? 0);
+  const minute = Number(parts.find((part) => part.type === "minute")?.value ?? 0);
+  const minutesAfterMidnight = hour * 60 + minute;
+  return minutesAfterMidnight >= 9 * 60 + 30 && minutesAfterMidnight <= 16 * 60;
 }
 
 export function StockPriceChart({ ticker }: { ticker: string }) {
@@ -100,6 +114,15 @@ export function StockPriceChart({ ticker }: { ticker: string }) {
     const cutoffIso = cutoff.toISOString().slice(0, 10);
     return history.points.filter((point) => point.date >= cutoffIso);
   }, [history, range]);
+  const chartPoints = useMemo(() => points.map((point) => {
+    if (range !== "1d") return point;
+    const regularSession = isRegularMarketSession(point.date);
+    return {
+      ...point,
+      regularClose: regularSession ? point.close : null,
+      extendedClose: regularSession ? null : point.close,
+    };
+  }), [points, range]);
 
   const first = points[0];
   const latest = points.at(-1);
@@ -144,23 +167,35 @@ export function StockPriceChart({ ticker }: { ticker: string }) {
           </div>
           <div className="market-chart-canvas" role="img" aria-label={`${ticker} price chart for the selected ${range} range${range === "1d" ? ", including extended hours" : ""}`}>
             <ResponsiveContainer width="100%" height={340}>
-              <ComposedChart data={points} margin={{ top: 18, right: 16, bottom: 2, left: 0 }}>
+              <ComposedChart data={chartPoints} margin={{ top: 18, right: 16, bottom: 2, left: 0 }}>
                 <CartesianGrid stroke="var(--aplex-grid)" vertical={false} />
                 <XAxis dataKey="date" minTickGap={56} tickLine={false} axisLine={{ stroke: "var(--aplex-line-strong)" }} tickFormatter={(value) => axisDate(String(value))} />
                 <YAxis yAxisId="price" domain={["auto", "auto"]} tickLine={false} axisLine={false} width={70} tickFormatter={(value) => money(Number(value), 0)} />
                 <YAxis yAxisId="volume" hide domain={[0, (dataMax: number) => dataMax * 5]} />
                 <Tooltip
                   labelFormatter={(value) => range === "1d" ? readableIntradayTime(String(value)) : readableDate(String(value))}
-                  formatter={(value, name) => name === "Volume" ? [compactNumber(Number(value)), "Volume"] : [money(Number(value)), "Close"]}
+                  formatter={(value, name) => name === "Volume" ? [compactNumber(Number(value)), "Volume"] : [money(Number(value)), String(name)]}
                   contentStyle={{ borderRadius: 10, border: "1px solid var(--aplex-line-strong)", boxShadow: "var(--aplex-shadow)", background: "var(--aplex-panel)", color: "var(--aplex-ink)" }}
                 />
                 <Bar yAxisId="volume" dataKey="volume" name="Volume" fill="var(--aplex-muted)" opacity={0.16} isAnimationActive={false} />
-                <Area yAxisId="price" type="monotone" dataKey="close" name="Close" stroke={positive ? "var(--aplex-positive)" : "var(--aplex-negative)"} fill={positive ? "var(--aplex-positive)" : "var(--aplex-negative)"} fillOpacity={0.09} strokeWidth={2.3} dot={false} activeDot={{ r: 4 }} isAnimationActive={false} />
+                {range === "1d" ? (
+                  <>
+                    <Area yAxisId="price" type="monotone" dataKey="regularClose" name="Regular session" stroke={positive ? "var(--aplex-positive)" : "var(--aplex-negative)"} fill={positive ? "var(--aplex-positive)" : "var(--aplex-negative)"} fillOpacity={0.08} strokeWidth={2.4} dot={false} activeDot={{ r: 4 }} isAnimationActive={false} />
+                    <Area yAxisId="price" type="monotone" dataKey="extendedClose" name="Extended hours" stroke="var(--aplex-extended)" fill="var(--aplex-extended)" fillOpacity={0.06} strokeWidth={2.1} dot={false} activeDot={{ r: 4 }} isAnimationActive={false} />
+                  </>
+                ) : (
+                  <Area yAxisId="price" type="monotone" dataKey="close" name="Close" stroke={positive ? "var(--aplex-positive)" : "var(--aplex-negative)"} fill={positive ? "var(--aplex-positive)" : "var(--aplex-negative)"} fillOpacity={0.09} strokeWidth={2.3} dot={false} activeDot={{ r: 4 }} isAnimationActive={false} />
+                )}
               </ComposedChart>
             </ResponsiveContainer>
           </div>
           <div className="market-chart-foot">
-            <span>{range === "1d" ? "Pre-market, regular and after-hours prices" : "Daily closing prices"}</span>
+            {range === "1d" ? (
+              <div className="market-session-legend" aria-label="Trading session colors">
+                <span><i className={positive ? "regular positive" : "regular negative"} />Regular session</span>
+                <span><i className="extended" />Pre-market / after-hours</span>
+              </div>
+            ) : <span>Daily closing prices</span>}
             <a href={history.source_url} target="_blank" rel="noreferrer">View price source</a>
           </div>
         </>

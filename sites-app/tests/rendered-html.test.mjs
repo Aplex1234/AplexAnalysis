@@ -1132,7 +1132,11 @@ test("serves one-day intraday prices with pre-market and after-hours enabled", a
 
     const component = await readFile(new URL("../../frontend/components/StockPriceChart.tsx", import.meta.url), "utf8");
     assert.match(component, /key: "1d", label: "1D"/);
-    assert.match(component, /Pre-market, regular and after-hours prices/);
+    assert.match(component, /Trading session colors/);
+    assert.match(component, /dataKey="regularClose"/);
+    assert.match(component, /dataKey="extendedClose"/);
+    assert.match(component, />Regular session</);
+    assert.match(component, />Pre-market \/ after-hours</);
   } finally {
     globalThis.fetch = originalFetch;
   }

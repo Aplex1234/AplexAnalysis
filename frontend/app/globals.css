@@ -13,6 +13,7 @@
   --aplex-hover: #eaf1ff;
   --aplex-positive: #087f5b;
   --aplex-negative: #c43d4b;
+  --aplex-extended: #6f5bd3;
   --chart-1: #1769e0;
   --chart-2: #008f86;
   --chart-3: #6f5bd3;
@@ -290,6 +291,7 @@ button, input { font: inherit; }
   --aplex-hover: #1b2c49;
   --aplex-positive: #42c99a;
   --aplex-negative: #ff8793;
+  --aplex-extended: #aa9cf7;
   --chart-1: #6da4ff;
   --chart-2: #37c9ba;
   --chart-3: #aa9cf7;
@@ -601,6 +603,12 @@ button, input { font: inherit; }
 .market-chart-foot { display: flex; align-items: center; justify-content: space-between; padding: 11px 27px 17px; color: var(--aplex-muted); font-size: 10px; }
 .market-chart-foot a { color: var(--aplex-blue); font-weight: 600; text-decoration: none; }
 .market-chart-foot a:hover { text-decoration: underline; }
+.market-session-legend { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; }
+.market-session-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.market-session-legend i { width: 18px; height: 3px; border-radius: 999px; background: var(--aplex-muted); }
+.market-session-legend i.regular.positive { background: var(--aplex-positive); }
+.market-session-legend i.regular.negative { background: var(--aplex-negative); }
+.market-session-legend i.extended { background: var(--aplex-extended); }
 .market-chart-message { min-height: 280px; display: grid; place-content: center; gap: 6px; padding: 30px; text-align: center; }
 .market-chart-message span { color: var(--aplex-muted); font-size: 12px; }
 .market-chart-loading { min-height: 330px; display: flex; align-items: flex-end; gap: 5px; padding: 50px 28px; }
