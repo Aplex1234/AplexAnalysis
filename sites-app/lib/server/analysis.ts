@@ -1,7 +1,8 @@
 import { normalizeTicker, resolveSecurity } from "./security-master.ts";
-import { extractRiskFactorHeadings } from "./risk-factors.ts";
+import { extractRiskFactorThemes } from "./risk-factors.ts";
 import { calculatePegProjection } from "./peg.ts";
 import { summarizeCompanyDescription } from "./company-description.ts";
+import type { NewsFeed } from "./news.ts";
 import {
   NASDAQ_PEER_SOURCE_LABEL,
   NASDAQ_PEER_SOURCE_URL,
@@ -46,10 +47,16 @@ export type Filing = {
 };
 export type CompanyRisk = {
   severity: "filed" | "high" | "medium" | "low";
+  kind?: "filing_theme" | "quantitative_indicator";
+  theme?: string;
   title: string;
   detail: string;
+  evidence?: string[];
+  item?: string;
   source_url?: string;
   filing_date?: string | null;
+  report_date?: string | null;
+  accession_number?: string;
   form?: string;
 };
 export type FinancialSource = {
@@ -145,6 +152,7 @@ export type AnalysisSources = {
   quote?: Quote;
   analystEstimates?: AnalystEstimates;
   peerSet?: PeerSet;
+  newsFeed?: NewsFeed;
   warnings?: string[];
 };
 
@@ -575,22 +583,25 @@ async function fetchFilingRisks(filing: Filing): Promise<CompanyRisk[]> {
   const cached = riskCache.get(filing.source_url);
   if (cached && cached.expiresAt > Date.now()) return cached.risks;
 
-  try {
-    const titles = extractRiskFactorHeadings(await fetchFilingDocument(filing), filing.form, 8);
-    const item = filing.form === "20-F" ? "Item 3.D" : filing.form === "10-K" ? "Item 1A" : "Risk Factors section";
-    const risks: CompanyRisk[] = titles.map((title) => ({
-      severity: "filed",
-      title,
-      detail: `Company-reported risk from ${item} of the ${filing.form} filed ${filing.filing_date ?? "most recently"}.`,
-      source_url: filing.source_url,
-      filing_date: filing.filing_date,
-      form: filing.form,
-    }));
-    riskCache.set(filing.source_url, { expiresAt: Date.now() + RISK_CACHE_TTL_MS, risks });
-    return risks;
-  } catch {
-    return [];
-  }
+  const themes = extractRiskFactorThemes(await fetchFilingDocument(filing), filing.form, 8);
+  const item = filing.form === "20-F" ? "Item 3.D" : filing.form === "10-K" ? "Item 1A" : "Risk Factors section";
+  if (!themes.length) throw new Error(`No ${item} risk themes could be extracted from ${filing.form}`);
+  const risks: CompanyRisk[] = themes.map((theme) => ({
+    severity: "filed",
+    kind: "filing_theme",
+    theme: theme.key,
+    title: theme.title,
+    detail: theme.summary,
+    evidence: theme.evidence,
+    item,
+    source_url: filing.source_url,
+    filing_date: filing.filing_date,
+    report_date: filing.report_date,
+    accession_number: filing.accession_number,
+    form: filing.form,
+  }));
+  riskCache.set(filing.source_url, { expiresAt: Date.now() + RISK_CACHE_TTL_MS, risks });
+  return risks;
 }
 
 export async function fetchCompanyRisks(financials: FinancialSource): Promise<CompanyRisk[]> {
@@ -1198,11 +1209,18 @@ export async function buildAnalysis(
       disclosure: "Analyst EPS estimates are consensus forecasts, not company guidance.",
     }));
   const latest = financials.periods.at(-1)!.values;
+  const newsFeed = sources.newsFeed ?? {
+    items: [],
+    fetched_at: new Date().toISOString(),
+    providers: [],
+    industry_query: null,
+    warnings: [],
+  };
   const risks: CompanyRisk[] = [...financials.filingRisks];
-  if (!risks.length && valuation.reverse_dcf.implied_revenue_growth > 0.15) risks.push({ severity: "high", title: "Demanding expectations", detail: "The current price embeds revenue growth above 15% in the reverse DCF." });
-  if (!risks.length && (metrics.net_debt_to_fcf ?? 0) > 2) risks.push({ severity: "medium", title: "Leverage", detail: "Net debt exceeds two years of current free cash flow." });
-  if (!risks.length && (metrics.operating_margin_volatility ?? 0) > 0.04) risks.push({ severity: "medium", title: "Margin variability", detail: "Operating margins have varied materially across the available history." });
-  if (!risks.length) risks.push({ severity: "low", title: "Model uncertainty", detail: "The latest annual filing risk section was unavailable, so this fallback reflects valuation sensitivity." });
+  if (!risks.length && valuation.reverse_dcf.implied_revenue_growth > 0.15) risks.push({ severity: "high", kind: "quantitative_indicator", title: "Demanding expectations", detail: "The current price embeds revenue growth above 15% in the reverse DCF." });
+  if (!risks.length && (metrics.net_debt_to_fcf ?? 0) > 2) risks.push({ severity: "medium", kind: "quantitative_indicator", title: "Leverage", detail: "Net debt exceeds two years of current free cash flow." });
+  if (!risks.length && (metrics.operating_margin_volatility ?? 0) > 0.04) risks.push({ severity: "medium", kind: "quantitative_indicator", title: "Margin variability", detail: "Operating margins have varied materially across the available history." });
+  if (!risks.length) risks.push({ severity: "low", kind: "quantitative_indicator", title: "Model uncertainty", detail: "The latest annual filing risk section was unavailable, so this fallback reflects valuation sensitivity." });
   return {
     company: { ticker, ...financials.profile },
     quote,
@@ -1236,6 +1254,7 @@ export async function buildAnalysis(
     },
     filings: financials.filings,
     risks,
+    news: newsFeed,
     provenance: {
       financials: sourceMode,
       quarterly_financials: financials.quarterlyPeriods.length
@@ -1246,6 +1265,7 @@ export async function buildAnalysis(
         : "Analyst estimates unavailable",
       quote: quote.provider,
       risk_factors: financials.filingRisks.length ? "latest annual filing" : "quantitative fallback",
+      news: newsFeed.providers.length ? newsFeed.providers.join(", ") : "News not loaded",
       comparables: peerSet.methodology,
       peer_snapshot_as_of: peers.length ? peers.map((peer) => peer.quote_as_of).join(" | ") : "Unavailable",
       methodology_version: "0.2.0-sites",

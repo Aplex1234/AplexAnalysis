@@ -19,7 +19,7 @@ import {
   refreshDueCompanies,
 } from "@/lib/server/analysis-service";
 
-const SECTION_VIEWS = new Set<AnalysisSection>(["financials", "valuation", "buyTarget", "comps", "earnings", "filings", "risks", "research"]);
+const SECTION_VIEWS = new Set<AnalysisSection>(["financials", "valuation", "buyTarget", "comps", "earnings", "news", "filings", "risks", "research"]);
 
 async function refreshCachedAnalysis(ticker: string, listingId: string) {
   try {

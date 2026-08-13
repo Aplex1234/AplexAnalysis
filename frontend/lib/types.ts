@@ -99,7 +99,28 @@ export type ComparableCompany = {
   selection_source_url: string;
 };
 
-export type AnalysisSection = "overview" | "financials" | "valuation" | "buyTarget" | "comps" | "earnings" | "filings" | "risks" | "research";
+export type AnalysisSection = "overview" | "financials" | "valuation" | "buyTarget" | "comps" | "earnings" | "news" | "filings" | "risks" | "research";
+
+export type NewsItem = {
+  id: string;
+  title: string;
+  summary: string | null;
+  url: string;
+  source: string;
+  published_at: string;
+  scope: "company" | "industry" | "filing";
+  tickers: string[];
+  matched_ticker: boolean;
+  image_url: string | null;
+};
+
+export type NewsFeed = {
+  items: NewsItem[];
+  fetched_at: string;
+  providers: string[];
+  industry_query: string | null;
+  warnings: string[];
+};
 
 export type Analysis = {
   data_scope?: "overview" | "partial" | "full";
@@ -194,7 +215,7 @@ export type Analysis = {
   };
   filings: Array<{
     form: string;
-    filing_date: string;
+    filing_date: string | null;
     report_date: string | null;
     accession_number: string;
     source_url: string;
@@ -203,16 +224,25 @@ export type Analysis = {
     severity: string;
     title: string;
     detail: string;
+    kind?: "filing_theme" | "quantitative_indicator";
+    theme?: string;
+    evidence?: string[];
+    item?: string;
     source_url?: string;
     filing_date?: string | null;
+    report_date?: string | null;
+    accession_number?: string;
     form?: string;
   }>;
+  news: NewsFeed;
   freshness?: {
     page_status: "live" | "cached" | "refreshing" | "stale";
     financials: DataFreshness;
     quote: DataFreshness;
     analyst_estimates: DataFreshness;
     comps: DataFreshness;
+    news: DataFreshness;
+    risks: DataFreshness;
     summary: DataFreshness;
   };
   provenance: {
@@ -221,6 +251,7 @@ export type Analysis = {
     analyst_estimates: string;
     quote: string;
     risk_factors: string;
+    news: string;
     comparables: string;
     peer_snapshot_as_of: string;
     methodology_version: string;

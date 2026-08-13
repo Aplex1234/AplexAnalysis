@@ -19,7 +19,8 @@ export const CACHE_TTLS = {
   quote: 10 * 60 * 1000,
   analyst_estimates: 12 * 60 * 60 * 1000,
   comps: 2 * 60 * 60 * 1000,
-  risks: 24 * 60 * 60 * 1000,
+  risks: 30 * 24 * 60 * 60 * 1000,
+  news: 20 * 60 * 1000,
   financial_check: 12 * 60 * 60 * 1000,
   popular_refresh: 30 * 60 * 1000,
 } as const;
@@ -521,7 +522,7 @@ export async function extendFinancialFreshness(ticker: string, cached: CachedFin
   return { ...cached, sourceFingerprint: fingerprint.accessionNumber, sourceFilingAt: fingerprint.filingDate, freshUntil, isFresh: true };
 }
 
-export type ComponentName = "quote" | "analyst_estimates" | "comps" | "risks";
+export type ComponentName = "quote" | "analyst_estimates" | "comps" | "risks" | "news";
 export type CachedComponent<T> = {
   data: T;
   listingId: string;

@@ -22,6 +22,7 @@ import {
   Purchase,
   Renew,
   Report,
+  Rss,
   Search,
   Sun,
   WarningAlt,
@@ -35,6 +36,7 @@ import type { Analysis, AnalysisSection, ComparableCompany, SecuritySearchResult
 const FinancialChart = lazy(() => import("./FinancialChart").then((module) => ({ default: module.FinancialChart })));
 const FinancialExplorer = lazy(() => import("./FinancialExplorer").then((module) => ({ default: module.FinancialExplorer })));
 const MultipleValuationView = lazy(() => import("./MultipleValuationView").then((module) => ({ default: module.MultipleValuationView })));
+const NewsView = lazy(() => import("./NewsView").then((module) => ({ default: module.NewsView })));
 const StockPriceChart = lazy(() => import("./StockPriceChart").then((module) => ({ default: module.StockPriceChart })));
 
 type PageKey = AnalysisSection;
@@ -46,6 +48,7 @@ const NAV_ITEMS: Array<{ key: PageKey; label: string; icon: ComponentType<{ size
   { key: "buyTarget", label: "Buy Target", icon: Purchase },
   { key: "comps", label: "Comps", icon: Compare },
   { key: "earnings", label: "Earnings", icon: Report },
+  { key: "news", label: "News", icon: Rss },
   { key: "filings", label: "Filings", icon: Document },
   { key: "risks", label: "Risks", icon: WarningAlt },
   { key: "research", label: "AI Research", icon: Chat },
@@ -73,6 +76,7 @@ function mergeAnalysisSection(current: Analysis, next: Analysis, section: Analys
     peer_selection: section === "comps" ? next.peer_selection : current.peer_selection,
     filings: section === "filings" ? next.filings : current.filings,
     risks: section === "risks" ? next.risks : current.risks,
+    news: section === "news" ? next.news : current.news,
   };
 }
 
@@ -396,7 +400,7 @@ export function ResearchTerminal({ initialAnalysis = null }: { initialAnalysis?:
           </form>
         </div>
         <div className="topbar-status">
-          <div><span>Coverage</span><strong>SEC filings</strong></div>
+          <div><span>Coverage</span><strong>SEC + public news</strong></div>
           <button type="button" className="theme-toggle" onClick={toggleTheme} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}>
             {theme === "dark" ? <Sun size={19} /> : <Moon size={19} />}
           </button>
@@ -412,6 +416,7 @@ export function ResearchTerminal({ initialAnalysis = null }: { initialAnalysis?:
                 type="button"
                 key={item.key}
                 className={activePage === item.key ? "nav-item active" : "nav-item"}
+                aria-current={activePage === item.key ? "page" : undefined}
                 onClick={() => setActivePage(item.key)}
               >
                 <Icon size={18} />
@@ -535,6 +540,7 @@ function PageContent({ page, analysis, onSelectCompany, detailsLoading }: { page
   if (page === "buyTarget") return <BuyTargetView analysis={analysis} />;
   if (page === "comps") return <CompsView analysis={analysis} onSelectCompany={onSelectCompany} />;
   if (page === "earnings") return <EarningsView analysis={analysis} />;
+  if (page === "news") return <Suspense fallback={<DeferredPanel label="Loading company news" />}><NewsView analysis={analysis} /></Suspense>;
   if (page === "filings") return <FilingsView analysis={analysis} />;
   if (page === "risks") return <RisksView analysis={analysis} />;
   if (page === "research") return <ResearchView analysis={analysis} />;
@@ -915,26 +921,59 @@ function FilingsView({ analysis }: { analysis: Analysis }) {
 }
 
 function RisksView({ analysis }: { analysis: Analysis }) {
-  const hasFiledRisks = analysis.risks.some((risk) => risk.severity === "filed");
+  const filedRisks = analysis.risks.filter((risk) => risk.kind === "filing_theme" || risk.severity === "filed");
+  const quantitativeRisks = analysis.risks.filter((risk) => risk.kind === "quantitative_indicator" || risk.severity !== "filed");
+  const filing = filedRisks[0];
+  const filingDate = filing?.filing_date
+    ? new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(new Date(`${filing.filing_date}T12:00:00Z`))
+    : "Unavailable";
   return (
-    <div className="page-stack">
-      <section className="risk-list">
-        <SectionHeading
-          title={hasFiledRisks ? "Company-reported risk factors" : "Quantified risk flags"}
-          detail={hasFiledRisks ? "Extracted from the risk section of the company's latest annual filing" : "Annual-filing risk text was unavailable, so these flags use financial metrics and valuation expectations"}
-        />
-        {analysis.risks.map((risk) => (
-          <article key={risk.title}>
-            <Tag type={risk.severity === "high" ? "red" : risk.severity === "medium" ? "warm-gray" : risk.severity === "filed" ? "blue" : "gray"}>{risk.severity.toUpperCase()}</Tag>
+    <div className="page-stack risk-page">
+      {filedRisks.length ? (
+        <section className="risk-dossier" aria-labelledby="risk-dossier-heading">
+          <header className="risk-dossier-header">
             <div>
-              <h3>{risk.title}</h3>
-              <p>{risk.detail}</p>
-              {risk.source_url && <a className="risk-source-link" href={risk.source_url} target="_blank" rel="noreferrer">Open source filing</a>}
+              <span className="risk-kicker">ANNUAL FILING REVIEW</span>
+              <h2 id="risk-dossier-heading">Key risks disclosed by {analysis.company.name}</h2>
+              <p>Distinct themes summarized from the latest annual filing. The company does not rank these themes by severity.</p>
             </div>
-          </article>
-        ))}
-      </section>
-      {!hasFiledRisks && <InlineNotification kind="warning" lowContrast title="Filing text unavailable" subtitle="The site could not extract the latest annual-filing risk section for this company, so it is showing a quantitative fallback." hideCloseButton />}
+            <div className="risk-dossier-count"><strong>{filedRisks.length}</strong><span>disclosed themes</span></div>
+          </header>
+          <div className="risk-filing-bar">
+            <div><span>Document</span><strong>{filing?.form ?? "Annual filing"}</strong></div>
+            <div><span>Section</span><strong>{filing?.item ?? "Risk Factors"}</strong></div>
+            <div><span>Filed</span><strong>{filingDate}</strong></div>
+            <div><span>Source</span>{filing?.source_url ? <a href={filing.source_url} target="_blank" rel="noreferrer">Open on SEC.gov <ArrowRight size={14} /></a> : <strong>Unavailable</strong>}</div>
+          </div>
+          <div className="risk-theme-list">
+            {filedRisks.map((risk, index) => (
+              <article key={risk.theme ?? risk.title}>
+                <span className="risk-theme-number">{String(index + 1).padStart(2, "0")}</span>
+                <div className="risk-theme-copy">
+                  <div className="risk-theme-label"><span>Company disclosed</span>{risk.form && <small>{risk.form}</small>}</div>
+                  <h3>{risk.title}</h3>
+                  <p>{risk.detail}</p>
+                  {risk.evidence?.[0] && (
+                    <details>
+                      <summary>View filing evidence</summary>
+                      <blockquote>{risk.evidence[0]}</blockquote>
+                    </details>
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+          <footer className="risk-method-note"><Information size={16} /><p>AplexAnalysis groups related filing statements into themes and keeps an evidence excerpt for review. Summaries are research aids, not a replacement for reading the full filing.</p></footer>
+        </section>
+      ) : (
+        <section className="risk-fallback" aria-labelledby="risk-fallback-heading">
+          <header><span className="risk-kicker">MODEL INDICATORS</span><h2 id="risk-fallback-heading">Quantitative risk flags</h2><p>The latest annual filing risk section could not be summarized, so these indicators use financial metrics and valuation expectations.</p></header>
+          <div className="risk-indicator-list">
+            {quantitativeRisks.map((risk) => <article key={risk.title}><Tag type={risk.severity === "high" ? "red" : risk.severity === "medium" ? "warm-gray" : "gray"}>{risk.severity.toUpperCase()}</Tag><div><h3>{risk.title}</h3><p>{risk.detail}</p></div></article>)}
+          </div>
+          <InlineNotification kind="warning" lowContrast title="Filing themes unavailable" subtitle="AplexAnalysis will try the annual filing again on the next eligible refresh." hideCloseButton />
+        </section>
+      )}
     </div>
   );
 }

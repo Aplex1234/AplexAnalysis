@@ -6,12 +6,13 @@ import { buildFinancialChartData, formatBillions } from "../../frontend/lib/char
 import { buildFinancialExplorerData, FINANCIAL_GROUPS } from "../../frontend/lib/financials.ts";
 import { normalizeCompanyFacts, normalizeQuarterlyCompanyFacts } from "../lib/server/sec-normalizer.ts";
 import { calculatePegProjection } from "../lib/server/peg.ts";
-import { extractRiskFactorHeadings } from "../lib/server/risk-factors.ts";
+import { extractRiskFactorHeadings, extractRiskFactorThemes } from "../lib/server/risk-factors.ts";
 import { summarizeCompanyDescription } from "../lib/server/company-description.ts";
 import { cacheIdentity, hasSameFinancialFingerprint, isAnalysisCacheCompatible, parseCachedAnalysisRow } from "../lib/server/analysis-cache.ts";
 import { buildAnalysis } from "../lib/server/analysis.ts";
 import { ANALYSIS_SCHEMA_VERSION, COMPONENT_SOURCE_VERSIONS, NORMALIZATION_VERSION, SCORE_MODEL_VERSION, VALUATION_MODEL_VERSION } from "../lib/server/model-versions.ts";
 import { extractPeerBusinessContext, rankPeerCandidates } from "../lib/server/peer-selection.ts";
+import { fetchCompanyNews } from "../lib/server/news.ts";
 
 async function render() {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -394,6 +395,116 @@ test("extracts company-reported risks from an annual filing section", () => {
   assert.equal(risks.length, 4);
   assert.match(risks[0], /Cybersecurity incidents/i);
   assert.ok(risks.every((risk) => !risk.includes("Unresolved Staff Comments")));
+  const themes = extractRiskFactorThemes(html, "10-K", 8);
+  assert.ok(themes.some((theme) => theme.summary.includes("the company depends on third-party networks")));
+});
+
+test("combines partial company, industry and SEC news without losing successful sources", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (request) => {
+    const url = String(request);
+    if (url.includes("query1.finance.yahoo.com")) {
+      return new Response(JSON.stringify({ news: [{
+        uuid: "apple-story",
+        title: "Apple expands services for business customers",
+        publisher: "Example Publisher",
+        link: "https://publisher.example/apple-story?utm_source=test",
+        providerPublishTime: 1_786_573_800,
+        relatedTickers: ["AAPL"],
+      }] }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (url.includes("api.nasdaq.com")) return new Response("Unavailable", { status: 503 });
+    if (url.includes("news.google.com")) {
+      return new Response(`<?xml version="1.0"?><rss><channel><item><title>Consumer electronics demand improves</title><link>https://news.google.com/articles/industry</link><pubDate>Wed, 12 Aug 2026 17:00:00 GMT</pubDate><source>Industry Wire</source></item></channel></rss>`, { status: 200, headers: { "content-type": "application/rss+xml" } });
+    }
+    throw new Error(`Unexpected URL: ${url}`);
+  };
+
+  try {
+    const feed = await fetchCompanyNews(
+      { ticker: "AAPL", name: "Apple Inc.", sector: "Technology", industry: "Consumer Electronics" },
+      [{ form: "8-K", filing_date: "2026-08-11", report_date: "2026-08-11", accession_number: "0000320193-26-000099", source_url: "https://www.sec.gov/Archives/example.htm" }],
+    );
+    assert.equal(feed.items.length, 3);
+    assert.ok(feed.items.some((item) => item.scope === "company" && item.matched_ticker));
+    assert.ok(feed.items.some((item) => item.scope === "industry"));
+    assert.ok(feed.items.some((item) => item.scope === "filing" && item.source === "SEC EDGAR"));
+    assert.ok(feed.providers.includes("Yahoo Finance"));
+    assert.ok(feed.providers.includes("Google News"));
+    assert.ok(!feed.providers.includes("Nasdaq"));
+    assert.match(feed.warnings.join(" "), /Nasdaq/);
+    assert.ok(feed.items.every((item, index, items) => index === 0 || Date.parse(items[index - 1].published_at) >= Date.parse(item.published_at)));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("groups filing risks into distinct evidence-backed themes without splitting inline text", () => {
+  const html = `
+    <nav>
+      <p>Table of Contents</p>
+      <p>Item 1A. Risk Factors</p>
+      <p>Item 1B. Unresolved Staff Comments</p>
+    </nav>
+    <h2>Item <span>1A</span>. <span>Risk Factors</span></h2>
+    <p>Cybersecurity incidents create material RIS</span><span>K because attacks could expose customer data and disrupt our information systems.</p>
+    <p>Intense competition and rapid technological change could reduce our market share and make our products obsolete.</p>
+    <p>Changes in laws and regulatory requirements may increase our compliance costs and limit the services we offer.</p>
+    <p>Supplier concentration and component shortages could interrupt manufacturing and delay deliveries to customers.</p>
+    <p>A recession, inflation and higher interest rates may reduce customer demand and adversely affect revenue.</p>
+    <p>Trade restrictions, export controls and geopolitical conflict could limit our international operations.</p>
+    <p>Our ability to recruit and retain key personnel may affect our execution of the growth strategy.</p>
+    <p>Risks associated with adverse losses and failure of operations.</p>
+    <h2>Item 1B. Unresolved Staff Comments</h2>
+    <p>A cybersecurity sentence outside Item 1A could harm this test if the boundary fails.</p>
+  `;
+
+  const themes = extractRiskFactorThemes(html, "10-K", 8);
+  assert.equal(themes.length, 7);
+  assert.equal(new Set(themes.map((theme) => theme.key)).size, themes.length);
+  assert.ok(themes.some((theme) => theme.key === "cybersecurity-data-privacy"));
+  assert.ok(themes.some((theme) => theme.key === "supply-chain-operations"));
+  assert.ok(themes.some((theme) => theme.key === "international-geopolitical"));
+  assert.ok(themes.every((theme) => theme.summary.startsWith("The filing reports that ")));
+  assert.ok(themes.every((theme) => theme.summary.endsWith(".")));
+  assert.ok(themes.every((theme) => theme.evidence.length >= 1 && theme.evidence.length <= 2));
+  assert.ok(themes.flatMap((theme) => theme.evidence).some((evidence) => evidence.includes("RISK because")));
+  assert.ok(themes.flatMap((theme) => theme.evidence).every((evidence) => !evidence.includes("Risks associated with")));
+  assert.ok(themes.flatMap((theme) => theme.evidence).every((evidence) => !evidence.includes("outside Item 1A")));
+});
+
+test("extracts Item 3.D risks from a 20-F and stops at Item 4", () => {
+  const html = `
+    <p>ITEM 3.D. RISK FACTORS</p>
+    <p>Foreign exchange volatility and economic downturns may reduce demand and adversely affect our reported revenue.</p>
+    <p>Government sanctions and export controls could limit our ability to serve customers in international markets.</p>
+    <p>Cyber attacks could disrupt our information systems and expose confidential customer information.</p>
+    <p>ITEM 4. INFORMATION ON THE COMPANY</p>
+    <p>Competition in this unrelated company-information section could affect results.</p>
+  `;
+
+  const themes = extractRiskFactorThemes(html, "20-F", 8);
+  assert.ok(themes.some((theme) => theme.key === "macroeconomic-demand"));
+  assert.ok(themes.some((theme) => theme.key === "international-geopolitical"));
+  assert.ok(themes.some((theme) => theme.key === "cybersecurity-data-privacy"));
+  assert.ok(themes.flatMap((theme) => theme.evidence).every((evidence) => !evidence.includes("unrelated company-information")));
+});
+
+test("extracts principal risks from a 40-F and respects the next report section", () => {
+  const html = `
+    <h2>Principal Risks and Uncertainties</h2>
+    <p>Wildfires and extreme weather could disrupt facilities and interrupt our operations.</p>
+    <p>Debt obligations and reduced access to capital markets may limit our liquidity and financial flexibility.</p>
+    <p>Failure to retain key employees could harm our ability to execute strategic initiatives.</p>
+    <h2>Management's Discussion and Analysis</h2>
+    <p>Regulatory changes discussed outside the risk section may affect future periods.</p>
+  `;
+
+  const themes = extractRiskFactorThemes(html, "40-F", 8);
+  assert.ok(themes.some((theme) => theme.key === "climate-physical-events"));
+  assert.ok(themes.some((theme) => theme.key === "financial-liquidity"));
+  assert.ok(themes.some((theme) => theme.key === "people-execution"));
+  assert.ok(themes.flatMap((theme) => theme.evidence).every((evidence) => !evidence.includes("outside the risk section")));
 });
 
 test("serves normalized delayed Nasdaq price history for the stock chart", async () => {
