@@ -99,13 +99,16 @@ function safeUrl(value: unknown, base?: string): string | null {
   }
 }
 
-function isoDate(value: unknown, fallback = new Date(0).toISOString()): string {
-  if (typeof value === "number" && Number.isFinite(value)) return new Date(value * 1_000).toISOString();
+function isoDate(value: unknown): string | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const timestamp = new Date(value * 1_000);
+    return Number.isFinite(timestamp.getTime()) ? timestamp.toISOString() : null;
+  }
   if (typeof value === "string") {
     const timestamp = Date.parse(value);
     if (Number.isFinite(timestamp)) return new Date(timestamp).toISOString();
   }
-  return fallback;
+  return null;
 }
 
 function escapeRegExp(value: string) {
@@ -124,7 +127,7 @@ function mentionsCompany(value: string, ticker: string, name: string) {
   const tickerPattern = new RegExp(`(^|[^A-Z0-9])${escapeRegExp(ticker.toUpperCase())}([^A-Z0-9]|$)`);
   if (tickerPattern.test(value.toUpperCase())) return true;
   const normalized = value.toLowerCase();
-  return companyTokens(name).some((token) => normalized.includes(token));
+  return companyTokens(name).some((token) => new RegExp(`(^|[^a-z0-9])${escapeRegExp(token)}([^a-z0-9]|$)`).test(normalized));
 }
 
 function rssTag(block: string, tag: string): string {
@@ -138,15 +141,24 @@ function titleKey(title: string) {
 
 function dedupeAndSort(items: NewsItem[]): NewsItem[] {
   const seen = new Set<string>();
-  return [...items]
+  const unique = [...items]
     .sort((left, right) => Date.parse(right.published_at) - Date.parse(left.published_at))
     .filter((item) => {
       const key = titleKey(item.title);
       if (!key || seen.has(key)) return false;
       seen.add(key);
       return true;
-    })
-    .slice(0, NEWS_LIMIT);
+    });
+  const selected: NewsItem[] = [];
+  for (const scope of ["company", "industry", "filing"] as const) {
+    const first = unique.find((item) => item.scope === scope);
+    if (first) selected.push(first);
+  }
+  for (const item of unique) {
+    if (selected.length >= NEWS_LIMIT) break;
+    if (!selected.includes(item)) selected.push(item);
+  }
+  return selected.sort((left, right) => Date.parse(right.published_at) - Date.parse(left.published_at));
 }
 
 async function fetchText(url: string, accept: string) {
@@ -167,8 +179,11 @@ async function fetchYahooCompanyNews(company: NewsCompany): Promise<NewsItem[]> 
   return (payload.news ?? []).flatMap((row): NewsItem[] => {
     const title = cleanText(row.title, 220);
     const link = safeUrl(row.link);
+    const publishedAt = isoDate(row.providerPublishTime);
     const relatedTickers = (row.relatedTickers ?? []).map((ticker) => ticker.toUpperCase());
-    if (!title || !link || (!relatedTickers.includes(company.ticker) && !mentionsCompany(title, company.ticker, company.name))) return [];
+    const directMention = title ? mentionsCompany(title, company.ticker, company.name) : false;
+    const focusedTickerMatch = relatedTickers.includes(company.ticker) && relatedTickers.length <= 2;
+    if (!title || !link || !publishedAt || (!directMention && !focusedTickerMatch)) return [];
     const image = [...(row.thumbnail?.resolutions ?? [])]
       .sort((left, right) => (right.width ?? 0) - (left.width ?? 0))
       .map((resolution) => safeUrl(resolution.url))
@@ -179,10 +194,10 @@ async function fetchYahooCompanyNews(company: NewsCompany): Promise<NewsItem[]> 
       summary: null,
       url: link,
       source: cleanText(row.publisher, 80) ?? "Yahoo Finance",
-      published_at: isoDate(row.providerPublishTime),
+      published_at: publishedAt,
       scope: "company",
       tickers: relatedTickers,
-      matched_ticker: relatedTickers.includes(company.ticker) || mentionsCompany(title, company.ticker, company.name),
+      matched_ticker: directMention || focusedTickerMatch,
       image_url: image,
     }];
   }).slice(0, COMPANY_ITEM_LIMIT);
@@ -196,15 +211,16 @@ async function fetchNasdaqCompanyNews(company: NewsCompany): Promise<NewsItem[]>
     const title = cleanText(row.title, 220);
     const summary = cleanText(row.description, 300);
     const link = safeUrl(row.url, "https://www.nasdaq.com");
+    const publishedAt = isoDate(row.created);
     const searchable = `${title ?? ""} ${summary ?? ""}`;
-    if (!title || !link || !mentionsCompany(searchable, company.ticker, company.name)) return [];
+    if (!title || !link || !publishedAt || !mentionsCompany(searchable, company.ticker, company.name)) return [];
     return [{
       id: `nasdaq:${titleKey(title)}`,
       title,
       summary,
       url: link,
       source: cleanText(row.publisher, 80) ?? "Nasdaq",
-      published_at: isoDate(row.created),
+      published_at: publishedAt,
       scope: "company",
       tickers: [company.ticker],
       matched_ticker: true,
@@ -221,7 +237,8 @@ async function fetchGoogleIndustryNews(company: NewsCompany, industryQuery: stri
   return blocks.flatMap((block, index): NewsItem[] => {
     const title = cleanText(rssTag(block, "title"), 220);
     const link = safeUrl(decodeEntities(rssTag(block, "link")));
-    if (!title || !link) return [];
+    const publishedAt = isoDate(decodeEntities(rssTag(block, "pubDate")));
+    if (!title || !link || !publishedAt) return [];
     const publisher = cleanText(rssTag(block, "source"), 80) ?? "Google News";
     const matchedTicker = mentionsCompany(title, company.ticker, company.name);
     return [{
@@ -230,7 +247,7 @@ async function fetchGoogleIndustryNews(company: NewsCompany, industryQuery: stri
       summary: null,
       url: link,
       source: publisher,
-      published_at: isoDate(decodeEntities(rssTag(block, "pubDate"))),
+      published_at: publishedAt,
       scope: "industry",
       tickers: matchedTicker ? [company.ticker] : [],
       matched_ticker: matchedTicker,
@@ -250,7 +267,7 @@ function filingItems(company: NewsCompany, filings: NewsFiling[]): NewsItem[] {
     "40-F": "The company's annual report as a Canadian foreign private issuer.",
   };
   return filings
-    .filter((filing) => allowed.has(filing.form) && filing.filing_date && safeUrl(filing.source_url))
+    .filter((filing) => allowed.has(filing.form) && filing.filing_date && safeUrl(filing.source_url) && isoDate(`${filing.filing_date}T12:00:00Z`))
     .slice(0, 4)
     .map((filing) => ({
       id: `sec:${filing.accession_number}`,
@@ -258,7 +275,7 @@ function filingItems(company: NewsCompany, filings: NewsFiling[]): NewsItem[] {
       summary: descriptions[filing.form] ?? "A new company filing is available from SEC EDGAR.",
       url: safeUrl(filing.source_url)!,
       source: "SEC EDGAR",
-      published_at: isoDate(`${filing.filing_date}T12:00:00Z`),
+      published_at: isoDate(`${filing.filing_date}T12:00:00Z`)!,
       scope: "filing" as const,
       tickers: [company.ticker],
       matched_ticker: true,
@@ -276,18 +293,23 @@ export async function fetchCompanyNews(company: NewsCompany, filings: NewsFiling
   if (industryQuery) jobs.push({ provider: "Google News", promise: fetchGoogleIndustryNews(company, industryQuery) });
 
   const settled = await Promise.allSettled(jobs.map((job) => job.promise));
-  const providers = ["SEC EDGAR"];
+  const filingNews = filingItems(company, filings);
+  const providers = filingNews.length ? ["SEC EDGAR"] : [];
   const warnings: string[] = [];
-  const items = filingItems(company, filings);
+  const items = [...filingNews];
   settled.forEach((result, index) => {
     const provider = jobs[index].provider;
     if (result.status === "fulfilled") {
       items.push(...result.value);
-      providers.push(provider);
+      if (result.value.length) providers.push(provider);
     } else {
       warnings.push(`${provider} coverage is temporarily unavailable.`);
     }
   });
+
+  if (!filingNews.length && settled.every((result) => result.status === "rejected")) {
+    throw new Error(warnings.join(" ") || "News providers are temporarily unavailable.");
+  }
 
   return {
     items: dedupeAndSort(items),

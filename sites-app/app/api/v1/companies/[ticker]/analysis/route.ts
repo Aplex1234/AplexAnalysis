@@ -18,6 +18,7 @@ import {
   rebuildOverviewFromComponentCaches,
   refreshDueCompanies,
 } from "@/lib/server/analysis-service";
+import { normalizeTicker } from "@/lib/server/security-master";
 
 const SECTION_VIEWS = new Set<AnalysisSection>(["financials", "valuation", "buyTarget", "comps", "earnings", "news", "filings", "risks", "research"]);
 
@@ -45,14 +46,14 @@ export async function GET(request: Request, context: { params: Promise<{ ticker:
   const requestStartedAt = Date.now();
   try {
     const { ticker } = await context.params;
-    const normalizedTicker = ticker.trim().toUpperCase();
+    const normalizedTicker = normalizeTicker(ticker);
     const searchParams = new URL(request.url).searchParams;
     const forceRefresh = searchParams.get("refresh") === "1";
     const requestedView = searchParams.get("view");
     const overviewOnly = requestedView === "overview";
     const requestedSection = SECTION_VIEWS.has(requestedView as AnalysisSection) ? requestedView as AnalysisSection : null;
     const responseScope = overviewOnly ? "overview" : requestedSection ?? "full";
-    const cached = forceRefresh ? null : await readCachedAnalysis(normalizedTicker);
+    const cached = forceRefresh || requestedSection ? null : await readCachedAnalysis(normalizedTicker);
 
     if (cached) {
       let refreshing = false;
@@ -87,7 +88,7 @@ export async function GET(request: Request, context: { params: Promise<{ ticker:
     const analysis = overviewOnly
       ? await rebuildOverviewFromComponentCaches(normalizedTicker)
       : requestedSection
-        ? await rebuildAnalysisSectionFromComponentCaches(normalizedTicker, requestedSection)
+        ? await rebuildAnalysisSectionFromComponentCaches(normalizedTicker, requestedSection, forceRefresh)
         : await rebuildAnalysisFromComponentCaches(normalizedTicker);
     if (overviewOnly) await scheduleBackgroundRefresh(warmFullAnalysis(normalizedTicker));
     const persisted = await readCachedAnalysis(normalizedTicker);

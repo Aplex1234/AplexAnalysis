@@ -200,12 +200,25 @@ function annualRiskVersion(financials: FinancialSource) {
   };
 }
 
-async function loadRisks(ticker: string, financials: FinancialSource | null): Promise<Loaded<CompanyRisk[]>> {
+async function loadRisks(ticker: string, financials: FinancialSource | null, forceRefresh = false): Promise<Loaded<CompanyRisk[]>> {
   if (!financials) return { data: null, freshness: freshness("unavailable", null, null, "Annual filing risks unavailable") };
   const { annual, sourceVersion } = annualRiskVersion(financials);
   if (!annual) return { data: [], freshness: freshness("unavailable", null, null, "No annual filing available") };
   const cached = await readComponentCache<CompanyRisk[]>(ticker, "risks", sourceVersion);
-  if (cached?.isFresh) return { data: cached.data, cached, freshness: freshness("cached", annual.filing_date, cached.freshUntil, cached.provider ?? "Cached annual filing risks") };
+  if (cached?.isFresh && !forceRefresh) return { data: cached.data, cached, freshness: freshness("cached", annual.filing_date, cached.freshUntil, cached.provider ?? "Cached annual filing risks") };
+  if (forceRefresh) {
+    const refreshStartedAt = Date.now();
+    try {
+      const risks = await fetchCompanyRisks(financials);
+      const stored = await writeComponentCache(ticker, financials.profile, "risks", risks, sourceVersion, CACHE_TTLS.risks, "SEC annual filing", refreshStartedAt);
+      return { data: risks, freshness: freshness("live", annual.filing_date, stored?.freshUntil ?? null, "SEC annual filing") };
+    } catch (error) {
+      await recordProviderFailure(ticker, "risks", error, cached?.listingId);
+      return cached
+        ? { data: cached.data, cached, freshness: freshness("stale", annual.filing_date, cached.freshUntil, cached.provider ?? "Last successful annual filing risks") }
+        : { data: [], freshness: freshness("unavailable", annual.filing_date, null, "Annual filing risks unavailable") };
+    }
+  }
   if (cached) {
     await scheduleSharedRefresh(`risks:${ticker}:${annual.accession_number}`, async () => {
       try {
@@ -233,9 +246,9 @@ function newsProviderLabel(feed: NewsFeed) {
   return feed.providers.length ? feed.providers.join(", ") : "News coverage";
 }
 
-async function loadNews(ticker: string, financials: FinancialSource | null): Promise<Loaded<NewsFeed>> {
+async function loadNews(ticker: string, financials: FinancialSource | null, forceRefresh = false): Promise<Loaded<NewsFeed>> {
   const cached = await readComponentCache<NewsFeed>(ticker, "news", COMPONENT_SOURCE_VERSIONS.news);
-  if (cached?.isFresh) {
+  if (cached?.isFresh && !forceRefresh) {
     return { data: cached.data, cached, freshness: freshness("cached", cached.data.fetched_at, cached.freshUntil, cached.provider ?? newsProviderLabel(cached.data)) };
   }
   if (!financials) {
@@ -248,7 +261,7 @@ async function loadNews(ticker: string, financials: FinancialSource | null): Pro
     if (feed.warnings.length) await recordProviderFailure(ticker, "news", new Error(feed.warnings.join(" ")), cached?.listingId);
     return writeComponentCache(ticker, financials.profile, "news", feed, COMPONENT_SOURCE_VERSIONS.news, CACHE_TTLS.news, newsProviderLabel(feed), Date.now());
   };
-  if (cached) {
+  if (cached && !forceRefresh) {
     await scheduleSharedRefresh(`news:${ticker}`, refresh);
     return { data: cached.data, cached, freshness: freshness("stale", cached.data.fetched_at, cached.freshUntil, `${cached.provider ?? newsProviderLabel(cached.data)}; refreshing`) };
   }
@@ -500,7 +513,7 @@ export async function rebuildOverviewFromComponentCaches(rawTicker: string) {
   return buildOverviewSnapshot(enriched);
 }
 
-export async function rebuildAnalysisSectionFromComponentCaches(rawTicker: string, section: AnalysisSection) {
+export async function rebuildAnalysisSectionFromComponentCaches(rawTicker: string, section: AnalysisSection, forceRefresh = false) {
   if (section === "overview") return rebuildOverviewFromComponentCaches(rawTicker);
   const ticker = normalizeTicker(rawTicker);
   const financials = await loadFinancials(ticker);
@@ -512,10 +525,10 @@ export async function rebuildAnalysisSectionFromComponentCaches(rawTicker: strin
     ? await loadPeers(ticker, financials.data, quote.data)
     : { data: emptyPeerSet(), freshness: freshness("unavailable", null, null, "Loads with Comps") };
   const risks = section === "risks"
-    ? await loadRisks(ticker, financials.data)
+    ? await loadRisks(ticker, financials.data, forceRefresh)
     : { data: [] as CompanyRisk[], freshness: freshness("unavailable", null, null, "Loads with Risks") };
   const news = section === "news"
-    ? await loadNews(ticker, financials.data)
+    ? await loadNews(ticker, financials.data, forceRefresh)
     : { data: emptyNewsFeed(), freshness: freshness("unavailable", null, null, "Loads with News") };
   const financialsForSection = financials.data
     ? { ...financials.data, filingRisks: risks.data ?? [] }

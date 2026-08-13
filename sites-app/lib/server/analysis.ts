@@ -563,10 +563,10 @@ function calculateScore(
   return { overall, rating, categories, weights, formula: "Weighted arithmetic mean of eight category scores; valuation is the five-year forward PEG score" };
 }
 
-async function fetchFilingDocument(filing: Filing) {
-  const cached = filingDocumentCache.get(filing.source_url);
+async function fetchFilingDocumentUrl(sourceUrl: string) {
+  const cached = filingDocumentCache.get(sourceUrl);
   if (cached && cached.expiresAt > Date.now()) return cached.html;
-  const response = await fetch(filing.source_url, {
+  const response = await fetch(sourceUrl, {
     headers: {
       "User-Agent": process.env.SEC_USER_AGENT ?? "AplexAnalysis/0.1 research@aplexanalysis.app",
       Accept: "text/html,application/xhtml+xml",
@@ -575,15 +575,48 @@ async function fetchFilingDocument(filing: Filing) {
   });
   if (!response.ok) throw new Error(`SEC filing request returned ${response.status}`);
   const html = await response.text();
-  filingDocumentCache.set(filing.source_url, { expiresAt: Date.now() + RISK_CACHE_TTL_MS, html });
+  filingDocumentCache.set(sourceUrl, { expiresAt: Date.now() + RISK_CACHE_TTL_MS, html });
   return html;
+}
+
+function fortyFExhibitUrls(html: string, filingUrl: string) {
+  const urls: string[] = [];
+  for (const match of html.matchAll(/<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
+    const href = match[1];
+    const label = match[2].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+    if (!/(?:ex(?:hibit)?\s*)?99(?:[._-]?1)?|annual information form|\baif\b/i.test(`${href} ${label}`)) continue;
+    try {
+      const url = new URL(href, filingUrl);
+      if (url.protocol !== "https:" || !url.hostname.endsWith("sec.gov")) continue;
+      if (!urls.includes(url.toString())) urls.push(url.toString());
+    } catch {
+      // Ignore malformed exhibit links in filing markup.
+    }
+  }
+  return urls.slice(0, 4);
 }
 
 async function fetchFilingRisks(filing: Filing): Promise<CompanyRisk[]> {
   const cached = riskCache.get(filing.source_url);
   if (cached && cached.expiresAt > Date.now()) return cached.risks;
 
-  const themes = extractRiskFactorThemes(await fetchFilingDocument(filing), filing.form, 8);
+  const primaryHtml = await fetchFilingDocumentUrl(filing.source_url);
+  let sourceUrl = filing.source_url;
+  let themes = extractRiskFactorThemes(primaryHtml, filing.form, 8);
+  if (!themes.length && filing.form === "40-F") {
+    for (const exhibitUrl of fortyFExhibitUrls(primaryHtml, filing.source_url)) {
+      try {
+        const exhibitThemes = extractRiskFactorThemes(await fetchFilingDocumentUrl(exhibitUrl), filing.form, 8);
+        if (exhibitThemes.length) {
+          themes = exhibitThemes;
+          sourceUrl = exhibitUrl;
+          break;
+        }
+      } catch {
+        // Continue through the small set of likely Annual Information Form exhibits.
+      }
+    }
+  }
   const item = filing.form === "20-F" ? "Item 3.D" : filing.form === "10-K" ? "Item 1A" : "Risk Factors section";
   if (!themes.length) throw new Error(`No ${item} risk themes could be extracted from ${filing.form}`);
   const risks: CompanyRisk[] = themes.map((theme) => ({
@@ -594,7 +627,7 @@ async function fetchFilingRisks(filing: Filing): Promise<CompanyRisk[]> {
     detail: theme.summary,
     evidence: theme.evidence,
     item,
-    source_url: filing.source_url,
+    source_url: sourceUrl,
     filing_date: filing.filing_date,
     report_date: filing.report_date,
     accession_number: filing.accession_number,

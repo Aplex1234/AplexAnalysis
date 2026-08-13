@@ -12,16 +12,19 @@ async function parseResponse(response: Response): Promise<Analysis> {
   return payload.data as Analysis;
 }
 
-async function requestAnalysis(ticker: string, signal: AbortSignal | undefined, scope: AnalysisSection | "full") {
-  const query = scope === "full" ? "" : `?view=${encodeURIComponent(scope)}`;
+async function requestAnalysis(ticker: string, signal: AbortSignal | undefined, scope: AnalysisSection | "full", forceRefresh = false) {
+  const params = new URLSearchParams();
+  if (scope !== "full") params.set("view", scope);
+  if (forceRefresh) params.set("refresh", "1");
+  const query = params.size ? `?${params}` : "";
   const response = await fetch(`${API_URL}/companies/${encodeURIComponent(ticker)}/analysis${query}`, {
     signal,
   });
   return parseResponse(response);
 }
 
-export function fetchAnalysis(ticker: string, signal?: AbortSignal, scope: AnalysisSection | "full" = "full"): Promise<Analysis> {
-  if (scope !== "overview") return requestAnalysis(ticker, signal, scope);
+export function fetchAnalysis(ticker: string, signal?: AbortSignal, scope: AnalysisSection | "full" = "full", forceRefresh = false): Promise<Analysis> {
+  if (scope !== "overview" || forceRefresh) return requestAnalysis(ticker, signal, scope, forceRefresh);
   const key = ticker.trim().toUpperCase();
   const existing = overviewRequests.get(key);
   if (existing) return existing;

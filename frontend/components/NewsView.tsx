@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Launch, Rss } from "@carbon/icons-react";
+import { Button } from "@carbon/react";
+import { Launch, Renew, Rss } from "@carbon/icons-react";
 
 import type { Analysis, NewsItem } from "@/lib/types";
 
@@ -54,7 +55,7 @@ function NewsRow({ item, ticker, lead = false }: { item: NewsItem; ticker: strin
   );
 }
 
-export function NewsView({ analysis }: { analysis: Analysis }) {
+export function NewsView({ analysis, onRetry }: { analysis: Analysis; onRetry: () => void }) {
   const [filter, setFilter] = useState<NewsFilter>("all");
   const items = useMemo(
     () => filter === "all" ? analysis.news.items : analysis.news.items.filter((item) => item.scope === filter),
@@ -99,6 +100,7 @@ export function NewsView({ analysis }: { analysis: Analysis }) {
                 <Rss size={30} />
                 <h3>No recent {filter === "all" ? "coverage" : scopeLabel(filter as NewsItem["scope"]).toLowerCase()} found</h3>
                 <p>Try another filter. Source coverage can vary by company and trading day.</p>
+                {newsFreshness?.status === "unavailable" && <Button kind="tertiary" renderIcon={Renew} onClick={onRetry}>Retry news sources</Button>}
               </div>
             )}
           </div>

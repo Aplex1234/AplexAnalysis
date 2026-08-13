@@ -30,6 +30,7 @@ import {
 import type { ComponentType } from "react";
 
 import { fetchAnalysis, prefetchAnalysis, searchSecurities } from "@/lib/api";
+import { analysisSectionPanelState, isAnalysisSectionLoaded, mergeAnalysisSection } from "@/lib/analysis-sections";
 import { compactMoney, money, multiple, percent, titleCase } from "@/lib/format";
 import type { Analysis, AnalysisSection, ComparableCompany, SecuritySearchResult } from "@/lib/types";
 
@@ -57,36 +58,15 @@ const NAV_ITEMS: Array<{ key: PageKey; label: string; icon: ComponentType<{ size
 const RECENT_SEARCHES_KEY = "aplex-recent-securities";
 const RECENT_SEARCH_LIMIT = 5;
 
-function mergeAnalysisSection(current: Analysis, next: Analysis, section: AnalysisSection): Analysis {
-  if (next.data_scope === "full") return next;
-  const detailedFinancials = ["financials", "valuation", "buyTarget"].includes(section);
-  const loadedSections = new Set<AnalysisSection>([
-    ...(current.loaded_sections ?? ["overview"]),
-    ...(next.loaded_sections ?? [section]),
-  ]);
-  return {
-    ...current,
-    ...next,
-    data_scope: "partial",
-    loaded_sections: [...loadedSections],
-    financials: detailedFinancials ? next.financials : current.financials,
-    quarterly_financials: detailedFinancials ? next.quarterly_financials : current.quarterly_financials,
-    analyst_estimates: section === "earnings" ? next.analyst_estimates : current.analyst_estimates,
-    comps: section === "comps" ? next.comps : current.comps,
-    peer_selection: section === "comps" ? next.peer_selection : current.peer_selection,
-    filings: section === "filings" ? next.filings : current.filings,
-    risks: section === "risks" ? next.risks : current.risks,
-    news: section === "news" ? next.news : current.news,
-  };
-}
-
 export function ResearchTerminal({ initialAnalysis = null }: { initialAnalysis?: Analysis | null }) {
   const [tickerInput, setTickerInput] = useState("AAPL");
   const [ticker, setTicker] = useState("AAPL");
   const [activePage, setActivePage] = useState<PageKey>("overview");
   const [analysis, setAnalysis] = useState<Analysis | null>(initialAnalysis);
   const [loading, setLoading] = useState(!initialAnalysis);
-  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [loadingSection, setLoadingSection] = useState<Exclude<AnalysisSection, "overview"> | null>(null);
+  const [forcedSection, setForcedSection] = useState<Exclude<AnalysisSection, "overview"> | null>(null);
+  const [sectionErrors, setSectionErrors] = useState<Partial<Record<AnalysisSection, string>>>({});
   const [error, setError] = useState<string | null>(null);
   const [requestVersion, setRequestVersion] = useState(0);
   const [searchResults, setSearchResults] = useState<SecuritySearchResult[]>([]);
@@ -141,7 +121,8 @@ export function ResearchTerminal({ initialAnalysis = null }: { initialAnalysis?:
     let active = true;
     const hasVisibleSnapshot = requestVersion === 0 && initialAnalysis?.company.ticker === ticker;
     setLoading(!hasVisibleSnapshot);
-    setDetailsLoading(false);
+    setLoadingSection(null);
+    setSectionErrors({});
     if (!hasVisibleSnapshot) setAnalysis(null);
     setError(null);
     fetchAnalysis(ticker, controller.signal, "overview")
@@ -175,31 +156,52 @@ export function ResearchTerminal({ initialAnalysis = null }: { initialAnalysis?:
   }, [initialAnalysis, ticker, requestVersion, rememberSecurity]);
 
   useEffect(() => {
-    if (activePage === "overview" || !analysis || analysis.company.ticker !== ticker) return;
-    const loadedSections = analysis.loaded_sections
-      ?? (analysis.data_scope === "overview" ? ["overview"] : NAV_ITEMS.map((item) => item.key));
-    if (loadedSections.includes(activePage)) return;
+    if (activePage === "overview" || !analysis || analysis.company.ticker !== ticker) {
+      setLoadingSection(null);
+      return;
+    }
+    if (isAnalysisSectionLoaded(analysis, activePage)) {
+      setLoadingSection(null);
+      return;
+    }
+    const requestedSection = activePage;
     const controller = new AbortController();
     let active = true;
-    setDetailsLoading(true);
-    setError(null);
-    fetchAnalysis(ticker, controller.signal, activePage)
+    setLoadingSection(requestedSection);
+    setSectionErrors((current) => ({ ...current, [requestedSection]: undefined }));
+    const forceRefresh = forcedSection === requestedSection;
+    fetchAnalysis(ticker, controller.signal, requestedSection, forceRefresh)
       .then((value) => {
         if (active) setAnalysis((current) => current && current.company.ticker === ticker
-          ? mergeAnalysisSection(current, value, activePage)
+          ? mergeAnalysisSection(current, value, requestedSection)
           : value);
       })
       .catch((requestError: Error) => {
-        if (active && requestError.name !== "AbortError") setError(requestError.message);
+        if (active && requestError.name !== "AbortError") {
+          setSectionErrors((current) => ({ ...current, [requestedSection]: requestError.message }));
+        }
       })
       .finally(() => {
-        if (active) setDetailsLoading(false);
+        if (active) {
+          setLoadingSection((current) => current === requestedSection ? null : current);
+          setForcedSection((current) => current === requestedSection ? null : current);
+        }
       });
     return () => {
       active = false;
       controller.abort();
     };
-  }, [activePage, analysis, ticker]);
+  }, [activePage, analysis, forcedSection, ticker]);
+
+  const retryAnalysisSection = useCallback((section: Exclude<AnalysisSection, "overview">) => {
+    setForcedSection(section);
+    setSectionErrors((current) => ({ ...current, [section]: undefined }));
+    setAnalysis((current) => current ? {
+      ...current,
+      data_scope: "partial",
+      loaded_sections: (current.loaded_sections ?? NAV_ITEMS.map((item) => item.key)).filter((item) => item !== section),
+    } : current);
+  }, []);
 
   useEffect(() => {
     const query = tickerInput.trim();
@@ -307,13 +309,16 @@ export function ResearchTerminal({ initialAnalysis = null }: { initialAnalysis?:
                 aria-autocomplete="list"
                 aria-controls="security-search-results"
                 aria-expanded={searchOpen}
-                aria-activedescendant={highlightedResult >= 0 ? `security-result-${highlightedResult}` : undefined}
+                aria-activedescendant={searchOpen && highlightedResult >= 0 ? `security-result-${highlightedResult}` : undefined}
                 autoComplete="off"
                 onPointerDown={() => {
                   setSearchOpen(true);
                   setHighlightedResult(searchOptions.length ? 0 : -1);
                 }}
-                onBlur={() => window.setTimeout(() => setSearchOpen(false), 120)}
+                onBlur={() => window.setTimeout(() => {
+                  setSearchOpen(false);
+                  setHighlightedResult(-1);
+                }, 120)}
                 onChange={(event) => {
                   setTickerInput(event.target.value);
                   setSearchResults([]);
@@ -331,6 +336,7 @@ export function ResearchTerminal({ initialAnalysis = null }: { initialAnalysis?:
                     setHighlightedResult((value) => (value <= 0 ? searchOptions.length - 1 : value - 1));
                   } else if (event.key === "Escape") {
                     setSearchOpen(false);
+                    setHighlightedResult(-1);
                   }
                 }}
               />
@@ -440,8 +446,14 @@ export function ResearchTerminal({ initialAnalysis = null }: { initialAnalysis?:
             {analysis.provenance.warnings.map((warning) => (
               <InlineNotification key={warning} kind="warning" lowContrast title="Source status" subtitle={warning} hideCloseButton />
             ))}
-            {error && <InlineNotification kind="error" lowContrast title="Additional data unavailable" subtitle={error} hideCloseButton />}
-            <PageContent page={activePage} analysis={analysis} onSelectCompany={openCompanyProfile} detailsLoading={detailsLoading} />
+            <PageContent
+              page={activePage}
+              analysis={analysis}
+              onSelectCompany={openCompanyProfile}
+              loadingSection={loadingSection}
+              sectionError={sectionErrors[activePage] ?? null}
+              onRetrySection={retryAnalysisSection}
+            />
           </>
         )}
       </main>
@@ -531,20 +543,38 @@ function CompanyHeader({ analysis }: { analysis: Analysis }) {
   );
 }
 
-function PageContent({ page, analysis, onSelectCompany, detailsLoading }: { page: PageKey; analysis: Analysis; onSelectCompany: (ticker: string) => void; detailsLoading: boolean }) {
-  if (page !== "overview" && (detailsLoading || analysis.data_scope === "overview")) {
-    return <DeferredPanel label={`Loading ${page} data`} />;
+function PageContent({ page, analysis, onSelectCompany, loadingSection, sectionError, onRetrySection }: {
+  page: PageKey;
+  analysis: Analysis;
+  onSelectCompany: (ticker: string) => void;
+  loadingSection: Exclude<AnalysisSection, "overview"> | null;
+  sectionError: string | null;
+  onRetrySection: (section: Exclude<AnalysisSection, "overview">) => void;
+}) {
+  if (page !== "overview") {
+    const panelState = analysisSectionPanelState(analysis, page, loadingSection, sectionError);
+    if (panelState === "loading") return <DeferredPanel label={`Loading ${page} data`} />;
+    if (panelState === "error") return <SectionErrorState section={page} error={sectionError ?? "Additional data is unavailable."} retry={() => onRetrySection(page)} />;
   }
   if (page === "financials") return <FinancialsView analysis={analysis} />;
   if (page === "valuation") return <Suspense fallback={<DeferredPanel label="Loading valuation workspace" />}><MultipleValuationView analysis={analysis} /></Suspense>;
   if (page === "buyTarget") return <BuyTargetView analysis={analysis} />;
   if (page === "comps") return <CompsView analysis={analysis} onSelectCompany={onSelectCompany} />;
   if (page === "earnings") return <EarningsView analysis={analysis} />;
-  if (page === "news") return <Suspense fallback={<DeferredPanel label="Loading company news" />}><NewsView analysis={analysis} /></Suspense>;
+  if (page === "news") return <Suspense fallback={<DeferredPanel label="Loading company news" />}><NewsView analysis={analysis} onRetry={() => onRetrySection("news")} /></Suspense>;
   if (page === "filings") return <FilingsView analysis={analysis} />;
-  if (page === "risks") return <RisksView analysis={analysis} />;
+  if (page === "risks") return <RisksView analysis={analysis} onRetry={() => onRetrySection("risks")} />;
   if (page === "research") return <ResearchView analysis={analysis} />;
   return <OverviewView analysis={analysis} />;
+}
+
+function SectionErrorState({ section, error, retry }: { section: Exclude<AnalysisSection, "overview">; error: string; retry: () => void }) {
+  return (
+    <div className="error-state section-error-state">
+      <InlineNotification kind="error" title={`Could not load ${section}`} subtitle={error} hideCloseButton />
+      <Button kind="tertiary" renderIcon={Renew} onClick={retry}>Try again</Button>
+    </div>
+  );
 }
 
 function DeferredPanel({ label }: { label: string }) {
@@ -920,7 +950,7 @@ function FilingsView({ analysis }: { analysis: Analysis }) {
   return <div className="page-stack"><section className="table-section"><SectionHeading title="SEC filings" detail="Primary documents from EDGAR" />{analysis.filings.length ? <table className="research-table"><thead><tr><th>Form</th><th>Filed</th><th>Report period</th><th>Accession</th><th>Source</th></tr></thead><tbody>{analysis.filings.map((filing) => <tr key={filing.accession_number}><th>{filing.form}</th><td>{filing.filing_date}</td><td>{filing.report_date || "N/A"}</td><td className="mono">{filing.accession_number}</td><td><a href={filing.source_url} target="_blank" rel="noreferrer">Open filing</a></td></tr>)}</tbody></table> : <div className="empty-state"><Document size={32} /><h3>No filing index in offline mode</h3><p>Financial statement provenance is still available per metric through the API.</p></div>}</section></div>;
 }
 
-function RisksView({ analysis }: { analysis: Analysis }) {
+function RisksView({ analysis, onRetry }: { analysis: Analysis; onRetry: () => void }) {
   const filedRisks = analysis.risks.filter((risk) => risk.kind === "filing_theme" || risk.severity === "filed");
   const quantitativeRisks = analysis.risks.filter((risk) => risk.kind === "quantitative_indicator" || risk.severity !== "filed");
   const filing = filedRisks[0];
@@ -971,7 +1001,8 @@ function RisksView({ analysis }: { analysis: Analysis }) {
           <div className="risk-indicator-list">
             {quantitativeRisks.map((risk) => <article key={risk.title}><Tag type={risk.severity === "high" ? "red" : risk.severity === "medium" ? "warm-gray" : "gray"}>{risk.severity.toUpperCase()}</Tag><div><h3>{risk.title}</h3><p>{risk.detail}</p></div></article>)}
           </div>
-          <InlineNotification kind="warning" lowContrast title="Filing themes unavailable" subtitle="AplexAnalysis will try the annual filing again on the next eligible refresh." hideCloseButton />
+          <InlineNotification kind="warning" lowContrast title="Filing themes unavailable" subtitle="The annual filing could not be summarized. You can try the source again now." hideCloseButton />
+          <Button kind="tertiary" renderIcon={Renew} onClick={onRetry}>Retry filing risks</Button>
         </section>
       )}
     </div>

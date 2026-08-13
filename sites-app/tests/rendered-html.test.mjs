@@ -4,12 +4,13 @@ import test from "node:test";
 
 import { buildFinancialChartData, formatBillions } from "../../frontend/lib/chart.ts";
 import { buildFinancialExplorerData, FINANCIAL_GROUPS } from "../../frontend/lib/financials.ts";
+import { analysisSectionPanelState, mergeAnalysisSection } from "../../frontend/lib/analysis-sections.ts";
 import { normalizeCompanyFacts, normalizeQuarterlyCompanyFacts } from "../lib/server/sec-normalizer.ts";
 import { calculatePegProjection } from "../lib/server/peg.ts";
 import { extractRiskFactorHeadings, extractRiskFactorThemes } from "../lib/server/risk-factors.ts";
 import { summarizeCompanyDescription } from "../lib/server/company-description.ts";
 import { cacheIdentity, hasSameFinancialFingerprint, isAnalysisCacheCompatible, parseCachedAnalysisRow } from "../lib/server/analysis-cache.ts";
-import { buildAnalysis } from "../lib/server/analysis.ts";
+import { buildAnalysis, fetchCompanyRisks } from "../lib/server/analysis.ts";
 import { ANALYSIS_SCHEMA_VERSION, COMPONENT_SOURCE_VERSIONS, NORMALIZATION_VERSION, SCORE_MODEL_VERSION, VALUATION_MODEL_VERSION } from "../lib/server/model-versions.ts";
 import { extractPeerBusinessContext, rankPeerCandidates } from "../lib/server/peer-selection.ts";
 import { fetchCompanyNews } from "../lib/server/news.ts";
@@ -71,6 +72,13 @@ test("keeps restored startup focus from opening the security search menu", async
   assert.doesNotMatch(component, /onFocus=\{\(\) => \{\s*setSearchOpen\(true\)/);
   assert.match(component, /onPointerDown=\{\(\) => \{\s*setSearchOpen\(true\)/);
   assert.match(component, /onChange=\{\(event\) => \{[\s\S]*?setSearchOpen\(true\)/);
+  assert.match(component, /aria-activedescendant=\{searchOpen && highlightedResult >= 0/);
+  assert.match(component, /event\.key === "Escape"[\s\S]*?setHighlightedResult\(-1\)/);
+});
+
+test("keeps the full research navigation reachable on short desktop screens", async () => {
+  const css = await readFile(new URL("../../frontend/app/premium.css", import.meta.url), "utf8");
+  assert.match(css, /\.sidebar nav\s*\{[^}]*min-height:\s*0[^}]*overflow-y:\s*auto/s);
 });
 
 test("routes a cold Overview through the lightweight shared-cache pipeline", async () => {
@@ -92,8 +100,80 @@ test("loads expensive research sections independently after Overview", async () 
   assert.match(route, /rebuildAnalysisSectionFromComponentCaches/);
   assert.match(route, /buildSectionSnapshot/);
   assert.match(api, /AnalysisSection/);
-  assert.match(component, /analysis\.loaded_sections/);
-  assert.match(component, /fetchAnalysis\(ticker, controller\.signal, activePage\)/);
+  assert.match(component, /isAnalysisSectionLoaded\(analysis, activePage\)/);
+  assert.match(component, /fetchAnalysis\(ticker, controller\.signal, requestedSection, forceRefresh\)/);
+});
+
+test("uses canonical tickers and current component caches for requested sections", async () => {
+  const route = await readFile(new URL("../app/api/v1/companies/[ticker]/analysis/route.ts", import.meta.url), "utf8");
+  assert.match(route, /normalizeTicker\(ticker\)/);
+  assert.match(route, /forceRefresh \|\| requestedSection \? null : await readCachedAnalysis/);
+  assert.match(route, /rebuildAnalysisSectionFromComponentCaches\(normalizedTicker, requestedSection, forceRefresh\)/);
+});
+
+test("keeps deferred-section loading and errors scoped to the requested page", () => {
+  const analysis = {
+    data_scope: "partial",
+    loaded_sections: ["overview", "comps"],
+  };
+
+  assert.equal(analysisSectionPanelState(analysis, "comps", "news", null), "content");
+  assert.equal(analysisSectionPanelState(analysis, "news", "news", null), "loading");
+  assert.equal(analysisSectionPanelState(analysis, "news", null, "News is unavailable"), "error");
+});
+
+test("merges a deferred section without erasing freshness from previously loaded pages", () => {
+  const current = {
+    data_scope: "partial",
+    loaded_sections: ["overview", "comps"],
+    financials: [{ fiscal_year: 2025 }],
+    quarterly_financials: [],
+    analyst_estimates: { annual: [] },
+    comps: [{ ticker: "MSFT" }],
+    peer_selection: { source_provider: "SEC" },
+    filings: [],
+    risks: [],
+    news: { items: [] },
+    freshness: {
+      page_status: "cached",
+      comps: { status: "cached", as_of: "2026-08-10T00:00:00.000Z", source: "Peer cache" },
+      news: { status: "unavailable", as_of: null, source: "Loads with News" },
+    },
+    provenance: {
+      comparables: "SEC peer selection",
+      peer_snapshot_as_of: "2026-08-10T00:00:00.000Z",
+      news: "Loads with News",
+      warnings: ["Existing warning"],
+    },
+  };
+  const next = {
+    ...current,
+    loaded_sections: ["overview", "news"],
+    comps: [],
+    peer_selection: { source_provider: "Unavailable" },
+    news: { items: [{ id: "news-1" }] },
+    freshness: {
+      ...current.freshness,
+      page_status: "live",
+      comps: { status: "unavailable", as_of: null, source: "Loads with Comps" },
+      news: { status: "live", as_of: "2026-08-12T00:00:00.000Z", source: "Yahoo Finance" },
+    },
+    provenance: {
+      ...current.provenance,
+      comparables: "Loads with Comps",
+      peer_snapshot_as_of: "",
+      news: "Yahoo Finance",
+      warnings: ["New warning"],
+    },
+  };
+
+  const merged = mergeAnalysisSection(current, next, "news");
+  assert.deepEqual(merged.comps, current.comps);
+  assert.equal(merged.freshness.comps.as_of, current.freshness.comps.as_of);
+  assert.equal(merged.freshness.news.as_of, next.freshness.news.as_of);
+  assert.equal(merged.provenance.comparables, current.provenance.comparables);
+  assert.equal(merged.provenance.news, next.provenance.news);
+  assert.deepEqual(merged.provenance.warnings, ["Existing warning", "New warning"]);
 });
 
 test("coordinates shared refreshes and gradually warms popular companies", async () => {
@@ -439,6 +519,120 @@ test("combines partial company, industry and SEC news without losing successful 
   }
 });
 
+test("drops undated provider stories instead of presenting them as 1970 news", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (request) => {
+    const url = String(request);
+    if (url.includes("query1.finance.yahoo.com")) {
+      return new Response(JSON.stringify({ news: [{
+        uuid: "undated-story",
+        title: "Apple announces a new service",
+        publisher: "Example Publisher",
+        link: "https://publisher.example/undated-story",
+        relatedTickers: ["AAPL"],
+      }] }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (url.includes("api.nasdaq.com")) return new Response("Unavailable", { status: 503 });
+    throw new Error(`Unexpected URL: ${url}`);
+  };
+
+  try {
+    const feed = await fetchCompanyNews(
+      { ticker: "AAPL", name: "Apple Inc.", sector: null, industry: null },
+      [],
+    );
+    assert.deepEqual(feed.items, []);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("rejects a total provider outage so stale news is not overwritten", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response("Unavailable", { status: 503 });
+  try {
+    await assert.rejects(
+      fetchCompanyNews({ ticker: "AAPL", name: "Apple Inc.", sector: null, industry: null }, []),
+      /Yahoo Finance|Nasdaq/,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("rejects broad related-ticker headlines that do not mention the company", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (request) => {
+    const url = String(request);
+    if (url.includes("query1.finance.yahoo.com")) {
+      return new Response(JSON.stringify({ news: [{
+        uuid: "broad-etf-story",
+        title: "Your Newborn Account Auto-Buys This S&P 500 ETF",
+        publisher: "Example Publisher",
+        link: "https://publisher.example/broad-etf-story",
+        providerPublishTime: 1_786_573_800,
+        relatedTickers: ["AAPL", "MSFT", "GOOG"],
+      }] }), { status: 200 });
+    }
+    if (url.includes("api.nasdaq.com")) return new Response(JSON.stringify({ data: { rows: [] } }), { status: 200 });
+    throw new Error(`Unexpected URL: ${url}`);
+  };
+  try {
+    const feed = await fetchCompanyNews({ ticker: "AAPL", name: "Apple Inc.", sector: null, industry: null }, []);
+    assert.deepEqual(feed.items, []);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("preserves company, industry and filing coverage under the global news limit", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (request) => {
+    const url = String(request);
+    if (url.includes("query1.finance.yahoo.com")) {
+      return new Response(JSON.stringify({ news: Array.from({ length: 12 }, (_, index) => ({
+        uuid: `yahoo-${index}`,
+        title: `Apple company update ${index}`,
+        publisher: "Yahoo Publisher",
+        link: `https://publisher.example/yahoo-${index}`,
+        providerPublishTime: 1_786_573_800 - index,
+        relatedTickers: ["AAPL"],
+      })) }), { status: 200 });
+    }
+    if (url.includes("api.nasdaq.com")) {
+      return new Response(JSON.stringify({ data: { rows: Array.from({ length: 12 }, (_, index) => ({
+        title: `Apple market report ${index}`,
+        description: "Apple business coverage",
+        url: `/articles/apple-${index}`,
+        publisher: "Nasdaq Publisher",
+        created: new Date(Date.UTC(2026, 7, 12, 16, 0, 0) - index * 1000).toISOString(),
+      })) } }), { status: 200 });
+    }
+    if (url.includes("news.google.com")) {
+      const items = Array.from({ length: 8 }, (_, index) => `<item><title>Consumer electronics outlook ${index}</title><link>https://news.google.com/articles/industry-${index}</link><pubDate>Wed, 12 Aug 2026 14:0${index}:00 GMT</pubDate><source>Industry Wire</source></item>`).join("");
+      return new Response(`<rss><channel>${items}</channel></rss>`, { status: 200 });
+    }
+    throw new Error(`Unexpected URL: ${url}`);
+  };
+  try {
+    const filings = Array.from({ length: 4 }, (_, index) => ({
+      form: "8-K",
+      filing_date: `2026-08-0${index + 1}`,
+      report_date: `2026-08-0${index + 1}`,
+      accession_number: `filing-${index}`,
+      source_url: `https://www.sec.gov/Archives/filing-${index}.htm`,
+    }));
+    const feed = await fetchCompanyNews(
+      { ticker: "AAPL", name: "Apple Inc.", sector: "Technology", industry: "Consumer Electronics" },
+      filings,
+    );
+    assert.equal(feed.items.length, 24);
+    assert.deepEqual(new Set(feed.items.map((item) => item.scope)), new Set(["company", "industry", "filing"]));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("groups filing risks into distinct evidence-backed themes without splitting inline text", () => {
   const html = `
     <nav>
@@ -505,6 +699,32 @@ test("extracts principal risks from a 40-F and respects the next report section"
   assert.ok(themes.some((theme) => theme.key === "financial-liquidity"));
   assert.ok(themes.some((theme) => theme.key === "people-execution"));
   assert.ok(themes.flatMap((theme) => theme.evidence).every((evidence) => !evidence.includes("outside the risk section")));
+});
+
+test("follows a 40-F Annual Information Form exhibit when the wrapper has no risk section", async () => {
+  const originalFetch = globalThis.fetch;
+  const wrapperUrl = "https://www.sec.gov/Archives/edgar/data/1/wrapper40f.htm";
+  const exhibitUrl = "https://www.sec.gov/Archives/edgar/data/1/exhibit99-1.htm";
+  globalThis.fetch = async (request) => {
+    const url = String(request);
+    if (url === wrapperUrl) {
+      return new Response(`<html><body><p>The Annual Information Form is incorporated by reference.</p><a href="exhibit99-1.htm">Exhibit 99.1 Annual Information Form</a></body></html>`, { status: 200 });
+    }
+    if (url === exhibitUrl) {
+      return new Response(`<html><body><h2>Risk Factors</h2><h3>Commodity price volatility could reduce profitability</h3><p>Changes in commodity prices may materially reduce revenue, cash flow and the economic value of operations.</p><h2>Material Contracts</h2></body></html>`, { status: 200 });
+    }
+    throw new Error(`Unexpected URL: ${url}`);
+  };
+  try {
+    const risks = await fetchCompanyRisks({
+      filings: [{ form: "40-F", filing_date: "2026-03-01", report_date: "2025-12-31", accession_number: "test-40f", source_url: wrapperUrl }],
+    });
+    assert.equal(risks.length, 1);
+    assert.equal(risks[0].source_url, exhibitUrl);
+    assert.match(`${risks[0].detail} ${risks[0].evidence.join(" ")}`, /commodity price/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("serves normalized delayed Nasdaq price history for the stock chart", async () => {
