@@ -328,7 +328,8 @@ test("provides a manual company refresh that bypasses the relevant component cac
   const route = await readFile(new URL("../app/api/v1/companies/[ticker]/analysis/route.ts", import.meta.url), "utf8");
   const service = await readFile(new URL("../lib/server/analysis-service.ts", import.meta.url), "utf8");
   const component = await readFile(new URL("../../frontend/components/ResearchTerminal.tsx", import.meta.url), "utf8");
-  assert.match(component, />Refresh data<|Refreshing data/);
+  assert.match(component, /aria-label=\{refreshing \? "Refreshing data" : "Refresh data"\}/);
+  assert.doesNotMatch(component, />\{refreshing \? "Refreshing data" : "Refresh data"\}</);
   assert.match(component, /fetchAnalysis\(refreshTicker, undefined, refreshSection, true\)/);
   assert.match(route, /rebuildOverviewFromComponentCaches\(normalizedTicker, forceRefresh\)/);
   assert.match(route, /forceRefresh \? "no-store"/);
@@ -1081,6 +1082,57 @@ test("serves normalized delayed Nasdaq price history for the stock chart", async
     assert.deepEqual(history.points.map((point) => point.date), ["2026-08-07", "2026-08-08"]);
     assert.equal(history.points.at(-1).close, 105.25);
     assert.equal(history.points.at(-1).volume, 1_200_000);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("serves one-day intraday prices with pre-market and after-hours enabled", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestedUrl = "";
+  globalThis.fetch = async (request) => {
+    requestedUrl = String(request);
+    return new Response(JSON.stringify({
+      chart: {
+        result: [{
+          timestamp: [1786622400, 1786651200, 1786672800],
+          indicators: {
+            quote: [{
+              open: [228.1, 230.0, 231.4],
+              high: [228.6, 232.0, 231.9],
+              low: [227.9, 229.7, 230.8],
+              close: [228.4, 231.6, 231.1],
+              volume: [120_000, 1_500_000, 210_000],
+            }],
+          },
+        }],
+        error: null,
+      },
+    }), { headers: { "content-type": "application/json" } });
+  };
+
+  try {
+    const workerUrl = new URL("../dist/server/index.js", import.meta.url);
+    workerUrl.searchParams.set("intraday-price-history-test", `${process.pid}-${Date.now()}`);
+    const { default: worker } = await import(workerUrl.href);
+    const response = await worker.fetch(
+      new Request("http://localhost/api/v1/companies/AAPL/price-history?range=1d"),
+      { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
+      { waitUntil() {}, passThroughOnException() {} },
+    );
+    assert.equal(response.status, 200);
+    const payload = await response.json();
+    assert.equal(payload.data.range, "1d");
+    assert.equal(payload.data.provider, "Yahoo Finance intraday prices including extended hours");
+    assert.match(requestedUrl, /range=1d/);
+    assert.match(requestedUrl, /interval=5m/);
+    assert.match(requestedUrl, /includePrePost=true/);
+    assert.match(payload.data.points[0].date, /T/);
+    assert.equal(payload.data.points.length, 3);
+
+    const component = await readFile(new URL("../../frontend/components/StockPriceChart.tsx", import.meta.url), "utf8");
+    assert.match(component, /key: "1d", label: "1D"/);
+    assert.match(component, /Pre-market, regular and after-hours prices/);
   } finally {
     globalThis.fetch = originalFetch;
   }

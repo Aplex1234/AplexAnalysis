@@ -62,7 +62,7 @@ export async function searchSecurities(query: string, signal?: AbortSignal): Pro
   return payload as SecuritySearchResult[];
 }
 
-export async function fetchStockPriceHistory(ticker: string, range: "1y" | "5y" | "max" = "1y", signal?: AbortSignal): Promise<StockPriceHistory> {
+export async function fetchStockPriceHistory(ticker: string, range: "1d" | "1y" | "5y" | "max" = "1y", signal?: AbortSignal): Promise<StockPriceHistory> {
   const response = await fetch(`${API_URL}/companies/${encodeURIComponent(ticker)}/price-history?range=${range}`, {
     signal,
   });

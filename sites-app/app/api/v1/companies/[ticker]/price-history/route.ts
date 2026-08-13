@@ -6,11 +6,13 @@ export async function GET(request: Request, context: { params: Promise<{ ticker:
   try {
     const { ticker } = await context.params;
     const requestedRange = new URL(request.url).searchParams.get("range");
-    const range: PriceHistoryRange = requestedRange === "5y" || requestedRange === "max" ? requestedRange : "1y";
+    const range: PriceHistoryRange = requestedRange === "1d" || requestedRange === "5y" || requestedRange === "max" ? requestedRange : "1y";
     const data = await getStockPriceHistory(ticker, range);
     const etag = `W/"price-history-${data.ticker}-${data.range}-${data.as_of}"`;
     const headers = {
-      "Cache-Control": "public, max-age=300, s-maxage=3600, stale-while-revalidate=21600",
+      "Cache-Control": range === "1d"
+        ? "public, max-age=15, s-maxage=60, stale-while-revalidate=120"
+        : "public, max-age=300, s-maxage=3600, stale-while-revalidate=21600",
       ETag: etag,
       "Server-Timing": `app;dur=${Date.now() - requestStartedAt}`,
     };

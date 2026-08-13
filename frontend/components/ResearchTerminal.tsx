@@ -536,7 +536,7 @@ function CompanyHeader({ analysis, refreshing, refreshStatus, onRefresh }: {
   const classification = [analysis.company.sector, analysis.company.industry].filter(Boolean).join(" / ");
   const peg = analysis.valuation.growth_projection.peg_ratio;
   const freshness = analysis.freshness;
-  const statusLabel = freshness?.page_status === "refreshing"
+  const statusLabel = refreshing || freshness?.page_status === "refreshing"
     ? "Refreshing"
     : freshness?.page_status === "stale"
       ? "Cached, refresh pending"
@@ -552,16 +552,16 @@ function CompanyHeader({ analysis, refreshing, refreshStatus, onRefresh }: {
             <h1>{analysis.company.name}</h1>
             <span>{analysis.company.ticker}</span>
             <Tag type={freshness?.page_status === "stale" ? "warm-gray" : "green"}>{statusLabel}</Tag>
-            <Button
+            <button
+              type="button"
               className={`company-refresh-button${refreshing ? " is-refreshing" : ""}`}
-              kind="ghost"
-              size="sm"
-              renderIcon={Renew}
+              aria-label={refreshing ? "Refreshing data" : "Refresh data"}
+              title={refreshing ? "Refreshing data" : "Refresh data"}
               disabled={refreshing}
               onClick={onRefresh}
             >
-              {refreshing ? "Refreshing data" : "Refresh data"}
-            </Button>
+              <Renew size={16} />
+            </button>
           </div>
           <span className="company-refresh-status" aria-live="polite">{refreshStatus}</span>
           <p>{analysis.company.exchange || "US listed"} / {classification || "SEC reporting company"}</p>

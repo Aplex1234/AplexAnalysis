@@ -20,11 +20,17 @@ export type StockPriceHistory = {
   is_delayed: true;
 };
 
-export type PriceHistoryRange = "1y" | "5y" | "max";
+export type PriceHistoryRange = "1d" | "1y" | "5y" | "max";
 
-const PRICE_HISTORY_SOURCE_VERSION = "price-history-v2";
-const MEMORY_CACHE_TTL_MS = 15 * 60 * 1000;
+const PRICE_HISTORY_SOURCE_VERSION = "price-history-v3";
+const MEMORY_CACHE_TTLS: Record<PriceHistoryRange, number> = {
+  "1d": 60 * 1000,
+  "1y": 15 * 60 * 1000,
+  "5y": 15 * 60 * 1000,
+  max: 15 * 60 * 1000,
+};
 const PERSISTENT_CACHE_TTLS: Record<PriceHistoryRange, number> = {
+  "1d": 60 * 1000,
   "1y": 60 * 60 * 1000,
   "5y": 6 * 60 * 60 * 1000,
   max: 12 * 60 * 60 * 1000,
@@ -117,7 +123,7 @@ async function writePersistentHistory(data: StockPriceHistory) {
 
 function rememberHistory(data: StockPriceHistory) {
   priceHistoryCache.set(`${data.ticker}:${data.range}`, {
-    expiresAt: Date.now() + MEMORY_CACHE_TTL_MS,
+    expiresAt: Date.now() + MEMORY_CACHE_TTLS[data.range],
     data,
   });
 }
@@ -191,9 +197,15 @@ async function getNasdaqHistory(ticker: string): Promise<StockPriceHistory> {
   );
 }
 
-async function getYahooHistory(ticker: string, range: "5y" | "max"): Promise<StockPriceHistory> {
-  const interval = range === "5y" ? "1wk" : "1mo";
-  const query = new URLSearchParams({ range, interval, events: "history", includeAdjustedClose: "true" });
+async function getYahooHistory(ticker: string, range: "1d" | "5y" | "max"): Promise<StockPriceHistory> {
+  const interval = range === "1d" ? "5m" : range === "5y" ? "1wk" : "1mo";
+  const query = new URLSearchParams({
+    range,
+    interval,
+    events: "history",
+    includeAdjustedClose: "true",
+    ...(range === "1d" ? { includePrePost: "true" } : {}),
+  });
   const response = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?${query}`, {
     headers: {
       "User-Agent": "Mozilla/5.0 (compatible; AplexAnalysis/0.1; financial research)",
@@ -228,7 +240,9 @@ async function getYahooHistory(ticker: string, range: "5y" | "max"): Promise<Sto
       if (close == null || !Number.isFinite(close)) return null;
       const fallback = close;
       return {
-        date: new Date(timestamp * 1000).toISOString().slice(0, 10),
+        date: range === "1d"
+          ? new Date(timestamp * 1000).toISOString()
+          : new Date(timestamp * 1000).toISOString().slice(0, 10),
         open: quote?.open?.[index] ?? fallback,
         high: quote?.high?.[index] ?? fallback,
         low: quote?.low?.[index] ?? fallback,
@@ -242,14 +256,16 @@ async function getYahooHistory(ticker: string, range: "5y" | "max"): Promise<Sto
     ticker,
     range,
     points,
-    "Yahoo Finance historical prices",
+    range === "1d"
+      ? "Yahoo Finance intraday prices including extended hours"
+      : "Yahoo Finance historical prices",
     `https://finance.yahoo.com/quote/${encodeURIComponent(ticker)}/history/`,
   );
 }
 
 export async function getStockPriceHistory(rawTicker: string, requestedRange: PriceHistoryRange = "1y"): Promise<StockPriceHistory> {
   const ticker = normalizeTicker(rawTicker);
-  const range: PriceHistoryRange = requestedRange === "5y" || requestedRange === "max" ? requestedRange : "1y";
+  const range: PriceHistoryRange = requestedRange === "1d" || requestedRange === "5y" || requestedRange === "max" ? requestedRange : "1y";
   const cached = priceHistoryCache.get(`${ticker}:${range}`);
   if (cached && cached.expiresAt > Date.now()) return cached.data;
   const persisted = await readPersistentHistory(ticker, range);
