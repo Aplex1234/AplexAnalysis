@@ -1137,6 +1137,9 @@ test("serves one-day intraday prices with pre-market and after-hours enabled", a
     assert.match(component, /dataKey="extendedClose"/);
     assert.match(component, />Regular session</);
     assert.match(component, />Pre-market \/ after-hours</);
+    assert.match(component, /previousRegularSession !== regularSession/);
+    assert.match(component, /regularClose: regularSession \|\| sessionChanged \? point\.close : null/);
+    assert.match(component, /extendedClose: !regularSession \|\| sessionChanged \? point\.close : null/);
   } finally {
     globalThis.fetch = originalFetch;
   }

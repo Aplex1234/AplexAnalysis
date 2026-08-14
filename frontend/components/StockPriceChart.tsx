@@ -114,13 +114,17 @@ export function StockPriceChart({ ticker }: { ticker: string }) {
     const cutoffIso = cutoff.toISOString().slice(0, 10);
     return history.points.filter((point) => point.date >= cutoffIso);
   }, [history, range]);
-  const chartPoints = useMemo(() => points.map((point) => {
+  const chartPoints = useMemo(() => points.map((point, index) => {
     if (range !== "1d") return point;
     const regularSession = isRegularMarketSession(point.date);
+    const previousRegularSession = index > 0
+      ? isRegularMarketSession(points[index - 1].date)
+      : regularSession;
+    const sessionChanged = previousRegularSession !== regularSession;
     return {
       ...point,
-      regularClose: regularSession ? point.close : null,
-      extendedClose: regularSession ? null : point.close,
+      regularClose: regularSession || sessionChanged ? point.close : null,
+      extendedClose: !regularSession || sessionChanged ? point.close : null,
     };
   }), [points, range]);
 
