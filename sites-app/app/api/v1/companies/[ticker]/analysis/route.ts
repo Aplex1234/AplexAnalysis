@@ -65,7 +65,7 @@ export async function GET(request: Request, context: { params: Promise<{ ticker:
       if (cached.isFresh) {
         await scheduleBackgroundRefresh(refreshDueCompanies(1, normalizedTicker));
       }
-      const analysis = markSnapshotFreshness(cached.analysis, cached.isFresh ? "cached" : refreshing ? "refreshing" : "stale");
+      const analysis = markSnapshotFreshness(cached.analysis, cached.isFresh ? "cached" : "stale");
       const etag = `W/"analysis-${normalizedTicker}-${responseScope}-${cached.generatedAt}-${cached.isFresh ? "fresh" : "stale"}"`;
       const headers = {
         "Cache-Control": "public, max-age=30, s-maxage=300, stale-while-revalidate=600",

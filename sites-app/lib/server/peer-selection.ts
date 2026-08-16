@@ -1,4 +1,4 @@
-export const PEER_SELECTION_VERSION = "peer-selection-3.0";
+export const PEER_SELECTION_VERSION = "peer-selection-3.1";
 export const NASDAQ_PEER_SOURCE_LABEL = "Nasdaq Stock Screener and company profiles";
 export const NASDAQ_PEER_SOURCE_URL = "https://www.nasdaq.com/market-activity/stocks/screener";
 export const MIN_AUTOMATIC_PEER_SCORE = 42;

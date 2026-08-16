@@ -460,8 +460,13 @@ function calculateMetrics(periods: Period[], price: number, quotedMarketCap?: nu
     roic: divide((latest.operating_income ?? 0) * 0.79, investedCapital),
     roe: divide(latest.net_income, latest.equity),
     net_debt: netDebt,
-    net_debt_to_fcf: divide(netDebt, latest.free_cash_flow),
-    fcf_conversion: divide(latest.free_cash_flow, latest.net_income),
+    net_debt_to_fcf: latest.free_cash_flow != null && latest.free_cash_flow > 0
+      ? divide(netDebt, latest.free_cash_flow)
+      : null,
+    fcf_conversion: latest.free_cash_flow != null && latest.free_cash_flow > 0
+      && latest.net_income != null && latest.net_income > 0
+      ? divide(latest.free_cash_flow, latest.net_income)
+      : null,
     share_change: (divide(latest.diluted_shares, prior.diluted_shares) ?? 1) - 1,
     buyback_yield: divide(latest.share_repurchases, marketCap),
     market_cap: marketCap ?? null,
@@ -1153,6 +1158,7 @@ export async function fetchComparableCompanies(
     ordered.slice(0, 6).map((candidate) => buildComparableCompany(candidate, loadCompanyData)),
   );
   const seenIssuers = new Set<string>();
+  const minimumDisplayScore = 55;
   const companies = results
     .filter((result): result is PromiseFulfilledResult<ComparableCompany> => result.status === "fulfilled")
     .map((result) => result.value)
@@ -1162,10 +1168,13 @@ export async function fetchComparableCompanies(
       seenIssuers.add(key);
       return true;
     })
+    .filter((company) => company.selection_score >= minimumDisplayScore)
     .slice(0, desiredCount);
   return {
     companies,
-    methodology: "Industry-first peer selection using Nasdaq classifications and company profiles, with reviewed SEC competitive evidence where available. Metrics are recalculated from current SEC annual facts and delayed Nasdaq prices.",
+    methodology: companies.length
+      ? `Industry-first peer selection with a minimum relevance score of ${minimumDisplayScore}, using Nasdaq classifications and company profiles plus reviewed SEC competitive evidence where available. Metrics are recalculated from current SEC annual facts and delayed Nasdaq prices.`
+      : `No peers met the minimum relevance score of ${minimumDisplayScore}. AplexAnalysis leaves the set empty instead of showing companies with weak product, customer, or business-model overlap.`,
     source_provider: candidateSet.sourceProvider,
     source_url: candidateSet.sourceUrl,
     source_as_of: candidateSet.sourceAsOf,

@@ -13,6 +13,7 @@ import { extractRiskFactorHeadings, extractRiskFactorThemes } from "../lib/serve
 import { summarizeCompanyDescription } from "../lib/server/company-description.ts";
 import { cacheIdentity, hasSameFinancialFingerprint, isAnalysisCacheCompatible, parseCachedAnalysisRow } from "../lib/server/analysis-cache.ts";
 import { buildAnalysis, fetchCompanyRisks } from "../lib/server/analysis.ts";
+import { buildOverviewSnapshot, buildSectionSnapshot } from "../lib/server/analysis-service.ts";
 import { ANALYSIS_SCHEMA_VERSION, COMPONENT_SOURCE_VERSIONS, NORMALIZATION_VERSION, SCORE_MODEL_VERSION, VALUATION_MODEL_VERSION } from "../lib/server/model-versions.ts";
 import { extractPeerBusinessContext, rankPeerCandidates } from "../lib/server/peer-selection.ts";
 import { fetchCompanyNews } from "../lib/server/news.ts";
@@ -197,6 +198,8 @@ test("does not present negative earnings multiples or fair values for a loss-mak
   assert.equal(analysis.valuation.methods.comparable_companies, null);
   assert.equal(analysis.valuation.methods.growth_adjusted, null);
   assert.equal(analysis.valuation.methods.normalized_multiple, null);
+  assert.equal(analysis.metrics.fcf_conversion, null, "two negative values must not become a positive conversion ratio");
+  assert.equal(analysis.metrics.net_debt_to_fcf, null, "leverage-to-FCF is not meaningful while FCF is negative");
   assert.ok(analysis.headline.fair_value >= 0);
   assert.ok(analysis.headline.bear_value >= 0);
   assert.ok(analysis.headline.bull_value >= 0);
@@ -269,9 +272,14 @@ test("server-renders the AplexAnalysis terminal", async () => {
 
 test("keeps the comps matrix readable and horizontally contained", async () => {
   const css = await readFile(new URL("../../frontend/app/premium.css", import.meta.url), "utf8");
+  const component = await readFile(new URL("../../frontend/components/ResearchTerminal.tsx", import.meta.url), "utf8");
+  const analysis = await readFile(new URL("../lib/server/analysis.ts", import.meta.url), "utf8");
   assert.match(css, /\.comps-matrix-scroll\s*\{[^}]*overflow-x:\s*auto/s);
   assert.match(css, /\.comps-matrix-table\s*\{[^}]*width:\s*100%[^}]*min-width:\s*1120px/s);
   assert.match(css, /\.comps-company-link\s*\{[^}]*text-align:\s*left/s);
+  assert.match(component, /minimum peer-quality rule/);
+  assert.match(analysis, /selection_score >= minimumDisplayScore/);
+  assert.match(analysis, /leaves the set empty instead of showing companies with weak product, customer, or business-model overlap/);
 });
 
 test("makes comparable company profiles directly navigable", async () => {
@@ -335,6 +343,63 @@ test("provides a manual company refresh that bypasses the relevant component cac
   assert.match(route, /forceRefresh \? "no-store"/);
   assert.match(service, /loadFinancials\(ticker, forceRefresh\)/);
   assert.match(service, /loadQuote\(ticker, financials\.data, forceRefresh\)/);
+  assert.doesNotMatch(component, /Cached, refresh pending/);
+  assert.match(component, /Refresh failed/);
+  assert.match(route, /cached\.isFresh \? "cached" : "stale"/);
+});
+
+test("keeps excluded Overview sections explicitly unavailable", () => {
+  const overview = buildOverviewSnapshot({
+    financials: [],
+    quarterly_financials: [],
+    analyst_estimates: { quarterly: [], annual: [], provider: "Nasdaq", as_of: null, source_url: "https://example.com", disclosure: "Test" },
+    comps: [], filings: [], risks: [], news: { items: [], fetched_at: "2026-08-15T00:00:00.000Z", providers: [], industry_query: null, warnings: [] },
+    freshness: {
+      page_status: "cached",
+      financials: { status: "cached", as_of: "2026-01-01", fresh_until: null, source: "SEC" },
+      quote: { status: "cached", as_of: "2026-08-15", fresh_until: null, source: "Nasdaq" },
+      analyst_estimates: { status: "cached", as_of: "2026-08-15", fresh_until: null, source: "Nasdaq" },
+      comps: { status: "cached", as_of: "2026-08-15", fresh_until: null, source: "Peers" },
+      news: { status: "cached", as_of: "2026-08-15", fresh_until: null, source: "Yahoo" },
+      risks: { status: "cached", as_of: "2026-01-01", fresh_until: null, source: "SEC" },
+      summary: { status: "cached", as_of: null, fresh_until: null, source: "Summary" },
+    },
+  });
+  assert.equal(overview.freshness.news.status, "unavailable");
+  assert.equal(overview.freshness.analyst_estimates.status, "unavailable");
+  assert.equal(overview.freshness.financials.status, "cached");
+  assert.equal(overview.freshness.quote.status, "cached");
+
+  const financials = buildSectionSnapshot({
+    ...overview,
+    analyst_estimates: { quarterly: [{ period: "Q1" }], annual: [{ period: "FY" }], provider: "Nasdaq", as_of: "2026-08-15", source_url: "https://example.com", disclosure: "Test" },
+    freshness: {
+      ...overview.freshness,
+      analyst_estimates: { status: "cached", as_of: "2026-08-15", fresh_until: null, source: "Nasdaq" },
+    },
+  }, "financials");
+  assert.equal(financials.analyst_estimates.annual.length, 1);
+  assert.equal(financials.freshness.analyst_estimates.status, "cached");
+});
+
+test("keeps quote attribution clickable and Buy Target navigation connected", async () => {
+  const component = await readFile(new URL("../../frontend/components/ResearchTerminal.tsx", import.meta.url), "utf8");
+  assert.match(component, /href=\{analysis\.quote\.source_url\}/);
+  assert.match(component, /page === "buyTarget"\) return <BuyTargetView/);
+  assert.match(component, /key: "buyTarget", label: "Buy Target"/);
+  assert.match(component, /Timestamp not supplied/);
+});
+
+test("shows mobile horizontal-scroll hints and quarterly YoY and QoQ comparisons", async () => {
+  const terminal = await readFile(new URL("../../frontend/components/ResearchTerminal.tsx", import.meta.url), "utf8");
+  const explorer = await readFile(new URL("../../frontend/components/FinancialExplorer.tsx", import.meta.url), "utf8");
+  const css = await readFile(new URL("../../frontend/app/premium.css", import.meta.url), "utf8");
+  assert.match(terminal, /Swipe sideways for more sections/);
+  assert.match(terminal, /Swipe sideways to compare every metric/);
+  assert.match(explorer, /"YoY"/);
+  assert.match(explorer, /"QoQ"/);
+  assert.match(explorer, /N\/M/);
+  assert.match(css, /@media \(max-width: 960px\)[\s\S]*?\.horizontal-scroll-hint\s*\{[\s\S]*?display:\s*block/);
 });
 
 test("keeps deferred-section loading and errors scoped to the requested page", () => {
@@ -400,6 +465,25 @@ test("merges a deferred section without erasing freshness from previously loaded
   assert.equal(merged.provenance.comparables, current.provenance.comparables);
   assert.equal(merged.provenance.news, next.provenance.news);
   assert.deepEqual(merged.provenance.warnings, ["Existing warning", "New warning"]);
+});
+
+test("merges analyst estimates returned with the Financials section", () => {
+  const current = {
+    data_scope: "overview", loaded_sections: ["overview"], financials: [], quarterly_financials: [],
+    analyst_estimates: { annual: [], quarterly: [] }, comps: [], filings: [], risks: [], news: { items: [] },
+    freshness: { analyst_estimates: { status: "unavailable" } },
+    provenance: { analyst_estimates: "Loads with Earnings", warnings: [] },
+  };
+  const next = {
+    ...current, data_scope: "partial", loaded_sections: ["overview", "financials"],
+    analyst_estimates: { annual: [{ period: "FY 2027" }], quarterly: [{ period: "Q1 2027" }] },
+    freshness: { analyst_estimates: { status: "cached" } },
+    provenance: { analyst_estimates: "Nasdaq analyst consensus", warnings: [] },
+  };
+  const merged = mergeAnalysisSection(current, next, "financials");
+  assert.equal(merged.analyst_estimates.annual.length, 1);
+  assert.equal(merged.freshness.analyst_estimates.status, "cached");
+  assert.equal(merged.provenance.analyst_estimates, "Nasdaq analyst consensus");
 });
 
 test("coordinates shared refreshes and gradually warms popular companies", async () => {
@@ -805,6 +889,18 @@ test("extracts company-reported risks from an annual filing section", () => {
   assert.ok(themes.some((theme) => theme.summary.includes("the company depends on third-party networks")));
 });
 
+test("extracts Dell-style Item 1A headings that use long-dash separators", () => {
+  const html = `
+    <h2>ITEM 1A&#160;&#8212; RISK FACTORS</h2>
+    <p>Competitive pressures may adversely affect our market position, revenue, and profitability.</p>
+    <p>Cybersecurity incidents could disrupt our operations and expose confidential customer information.</p>
+    <h2>ITEM 1B&#160;&#8212; UNRESOLVED STAFF COMMENTS</h2>
+  `;
+  const themes = extractRiskFactorThemes(html, "10-K", 8);
+  assert.ok(themes.some((theme) => theme.key === "competition-innovation"));
+  assert.ok(themes.some((theme) => theme.key === "cybersecurity-data-privacy"));
+});
+
 test("combines partial company, industry and SEC news without losing successful sources", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (request) => {
@@ -833,6 +929,7 @@ test("combines partial company, industry and SEC news without losing successful 
     );
     assert.equal(feed.items.length, 3);
     assert.ok(feed.items.some((item) => item.scope === "company" && item.matched_ticker));
+    assert.ok(feed.items.some((item) => item.relevance === "direct"));
     assert.ok(feed.items.some((item) => item.scope === "industry"));
     assert.ok(feed.items.some((item) => item.scope === "filing" && item.source === "SEC EDGAR"));
     assert.ok(feed.providers.includes("Yahoo Finance"));
@@ -906,6 +1003,32 @@ test("rejects broad related-ticker headlines that do not mention the company", a
   try {
     const feed = await fetchCompanyNews({ ticker: "AAPL", name: "Apple Inc.", sector: null, industry: null }, []);
     assert.deepEqual(feed.items, []);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("separates focused ticker mentions from direct company coverage", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (request) => {
+    const url = String(request);
+    if (url.includes("query1.finance.yahoo.com")) {
+      return new Response(JSON.stringify({ news: [{
+        uuid: "focused-ticker-story",
+        title: "Large-cap technology earnings calendar for next week",
+        publisher: "Example Publisher",
+        link: "https://publisher.example/calendar",
+        providerPublishTime: 1_786_573_800,
+        relatedTickers: ["AAPL"],
+      }] }), { status: 200 });
+    }
+    if (url.includes("api.nasdaq.com")) return new Response(JSON.stringify({ data: { rows: [] } }), { status: 200 });
+    throw new Error(`Unexpected URL: ${url}`);
+  };
+  try {
+    const feed = await fetchCompanyNews({ ticker: "AAPL", name: "Apple Inc.", sector: null, industry: null }, []);
+    assert.equal(feed.items[0]?.scope, "company");
+    assert.equal(feed.items[0]?.relevance, "ticker");
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -1434,5 +1557,5 @@ test("serves a complete AAPL analysis through the hosted API", async () => {
   assert.deepEqual(financialsPayload.data.loaded_sections, ["overview", "financials"]);
   assert.ok(financialsPayload.data.quarterly_financials.length > 0);
   assert.deepEqual(financialsPayload.data.comps, []);
-  assert.deepEqual(financialsPayload.data.analyst_estimates.annual, []);
+  assert.ok(financialsPayload.data.analyst_estimates.annual.length > 0);
 });

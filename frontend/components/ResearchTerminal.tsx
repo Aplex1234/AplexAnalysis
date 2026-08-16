@@ -69,7 +69,7 @@ export function ResearchTerminal({ initialAnalysis = null }: { initialAnalysis?:
   const [sectionErrors, setSectionErrors] = useState<Partial<Record<AnalysisSection, string>>>({});
   const [error, setError] = useState<string | null>(null);
   const [manualRefreshing, setManualRefreshing] = useState(false);
-  const [manualRefreshStatus, setManualRefreshStatus] = useState<string | null>(null);
+  const [manualRefreshStatus, setManualRefreshStatus] = useState<{ message: string; outcome: "success" | "error" } | null>(null);
   const [requestVersion, setRequestVersion] = useState(0);
   const [searchResults, setSearchResults] = useState<SecuritySearchResult[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -221,9 +221,12 @@ export function ResearchTerminal({ initialAnalysis = null }: { initialAnalysis?:
           ? refreshed
           : mergeAnalysisSection(current, refreshed, refreshSection);
       });
-      setManualRefreshStatus("Data refreshed just now");
+      setManualRefreshStatus({ message: "Data refreshed just now", outcome: "success" });
     } catch (refreshError) {
-      setManualRefreshStatus(refreshError instanceof Error ? refreshError.message : "Refresh failed. Try again.");
+      setManualRefreshStatus({
+        message: refreshError instanceof Error ? refreshError.message : "Refresh failed. Try again.",
+        outcome: "error",
+      });
     } finally {
       setManualRefreshing(false);
     }
@@ -457,6 +460,7 @@ export function ResearchTerminal({ initialAnalysis = null }: { initialAnalysis?:
             );
           })}
         </nav>
+        <span className="horizontal-scroll-hint nav-scroll-hint">Swipe sideways for more sections</span>
         <div className="sidebar-foot">
           <Information size={16} />
           <span>Research software. Not investment advice.</span>
@@ -527,22 +531,28 @@ function freshnessTime(value: string | null | undefined, dateOnly = false) {
     : { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
+function freshnessDisplay(item: NonNullable<Analysis["freshness"]>["financials"], dateOnly = false) {
+  if (item.status === "unavailable") return "Unavailable";
+  return item.as_of ? freshnessTime(item.as_of, dateOnly) : "Timestamp not supplied";
+}
+
 function CompanyHeader({ analysis, refreshing, refreshStatus, onRefresh }: {
   analysis: Analysis;
   refreshing: boolean;
-  refreshStatus: string | null;
+  refreshStatus: { message: string; outcome: "success" | "error" } | null;
   onRefresh: () => void;
 }) {
   const classification = [analysis.company.sector, analysis.company.industry].filter(Boolean).join(" / ");
   const peg = analysis.valuation.growth_projection.peg_ratio;
   const freshness = analysis.freshness;
-  const statusLabel = refreshing || freshness?.page_status === "refreshing"
+  const statusLabel = refreshing
     ? "Refreshing"
-    : freshness?.page_status === "stale"
-      ? "Cached, refresh pending"
-      : freshness?.page_status === "cached"
-        ? "Cached"
+    : refreshStatus?.outcome === "error"
+      ? "Refresh failed"
+      : freshness?.page_status === "stale" || freshness?.page_status === "refreshing"
+        ? "Stale"
         : "Fresh";
+  const statusTone = statusLabel === "Refresh failed" ? "red" : statusLabel === "Stale" ? "warm-gray" : "green";
   return (
     <section className="company-header">
       <div className="company-identity">
@@ -551,7 +561,7 @@ function CompanyHeader({ analysis, refreshing, refreshStatus, onRefresh }: {
           <div className="company-title-row">
             <h1>{analysis.company.name}</h1>
             <span>{analysis.company.ticker}</span>
-            <Tag type={freshness?.page_status === "stale" ? "warm-gray" : "green"}>{statusLabel}</Tag>
+            <Tag type={statusTone}>{statusLabel}</Tag>
             <button
               type="button"
               className={`company-refresh-button${refreshing ? " is-refreshing" : ""}`}
@@ -563,13 +573,17 @@ function CompanyHeader({ analysis, refreshing, refreshStatus, onRefresh }: {
               <Renew size={16} />
             </button>
           </div>
-          <span className="company-refresh-status" aria-live="polite">{refreshStatus}</span>
+          <span className="company-refresh-status" aria-live="polite">{refreshStatus?.message}</span>
           <p>{analysis.company.exchange || "US listed"} / {classification || "SEC reporting company"}</p>
           <div className="company-price-line">
             <strong>{money(analysis.quote.price)}</strong>
-            <span>Delayed market price</span>
+            <span>{analysis.quote.is_delayed ? "Delayed market price" : "Market price"}</span>
           </div>
-          <small>As of {analysis.quote.as_of} via {analysis.quote.provider}</small>
+          <small>
+            As of {analysis.quote.as_of} via {analysis.quote.source_url ? (
+              <a href={analysis.quote.source_url} target="_blank" rel="noreferrer">{analysis.quote.provider}</a>
+            ) : analysis.quote.provider}
+          </small>
         </div>
       </div>
       <div className="company-snapshot" aria-label="Company market snapshot">
@@ -580,10 +594,10 @@ function CompanyHeader({ analysis, refreshing, refreshStatus, onRefresh }: {
       </div>
       {freshness && (
         <div className="freshness-strip" aria-label="Data freshness">
-          <div><span>Financial filing</span><strong>{freshnessTime(freshness.financials.as_of, true)}</strong><small>{freshness.financials.status}</small></div>
-          <div><span>Quote updated</span><strong>{freshnessTime(freshness.quote.as_of)}</strong><small>{freshness.quote.status}</small></div>
-          <div><span>Estimates updated</span><strong>{freshnessTime(freshness.analyst_estimates.as_of)}</strong><small>{freshness.analyst_estimates.status}</small></div>
-          <div><span>Comparable set</span><strong>{freshnessTime(freshness.comps.as_of)}</strong><small>{freshness.comps.status}</small></div>
+          <div><span>Financial filing</span><strong>{freshnessDisplay(freshness.financials, true)}</strong><small>{freshness.financials.status}</small></div>
+          <div><span>Quote updated</span><strong>{freshnessDisplay(freshness.quote)}</strong><small>{freshness.quote.status}</small></div>
+          <div><span>Estimates updated</span><strong>{freshnessDisplay(freshness.analyst_estimates)}</strong><small>{freshness.analyst_estimates.status}</small></div>
+          <div><span>Comparable set</span><strong>{freshnessDisplay(freshness.comps)}</strong><small>{freshness.comps.status}</small></div>
         </div>
       )}
     </section>
@@ -793,6 +807,8 @@ function EstimateTable({ title, rows }: { title: string; rows: Analysis["analyst
     <div className="estimate-table-block">
       <h4>{title}</h4>
       {rows.length ? (
+        <>
+        <span className="horizontal-scroll-hint">Swipe sideways to see all estimate columns</span>
         <div className="estimate-table-scroll">
           <table className="research-table estimate-table">
             <thead><tr><th>Period</th><th>Consensus EPS</th><th>Range</th><th>Analysts</th><th>Revisions</th></tr></thead>
@@ -809,6 +825,7 @@ function EstimateTable({ title, rows }: { title: string; rows: Analysis["analyst
             </tbody>
           </table>
         </div>
+        </>
       ) : <p className="estimate-table-empty">No estimates available.</p>}
     </div>
   );
@@ -885,7 +902,7 @@ function CompsView({ analysis, onSelectCompany }: { analysis: Analysis; onSelect
         <div className="comps-hero-copy">
           <span>COMPARABLE COMPANY ANALYSIS</span>
           <h2 id="comps-heading">{analysis.company.name} against its closest peers</h2>
-          <p>{analysis.comps.length ? `${analysis.comps.length} companies selected by industry, products, customers, business model, and scale.` : "Target metrics are available, but reliable peer data could not be loaded."}</p>
+          <p>{analysis.comps.length ? `${analysis.comps.length} companies selected by industry, products, customers, business model, and scale.` : "No companies met the minimum peer-quality rule. Unrelated companies are intentionally excluded."}</p>
           <div className="comps-industry-line"><strong>{analysis.company.industry || "Industry not classified"}</strong><span>{analysis.company.sector || "SEC reporting company"}</span></div>
         </div>
         <div className="comps-universe-panel">
@@ -925,6 +942,7 @@ function CompsView({ analysis, onSelectCompany }: { analysis: Analysis; onSelect
           <div><h3 id="comps-matrix-heading">Comparison matrix</h3><p>Annual filing metrics with the latest available delayed market data.</p></div>
           <span>{rows.length} companies</span>
         </div>
+        <span className="horizontal-scroll-hint">Swipe sideways to compare every metric</span>
         <div className="comps-matrix-scroll">
           <table className="comps-matrix-table">
             <thead>
@@ -956,7 +974,7 @@ function CompsView({ analysis, onSelectCompany }: { analysis: Analysis; onSelect
             </tbody>
           </table>
         </div>
-        {!analysis.comps.length && <div className="comps-empty"><p>No reliable peer rows were available for this company. AplexAnalysis will retry when the analysis is refreshed.</p></div>}
+        {!analysis.comps.length && <div className="comps-empty"><p>{analysis.provenance.comparables || "No strong operating peers were identified. The comparison stays empty instead of adding weak industry matches."}</p></div>}
         <div className="comps-methodology-v2">
           <Information size={16} />
           <div><strong>Peer methodology</strong><p>{analysis.provenance.comparables} {fiscalCoverage} data is shown where available.</p></div>

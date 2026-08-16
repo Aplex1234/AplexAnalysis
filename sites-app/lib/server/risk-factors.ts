@@ -231,20 +231,20 @@ function findBestSection(text: string, startPattern: RegExp, endPattern: RegExp)
 function sectionDefinition(form: string): SectionDefinition {
   if (form.startsWith("20-F")) {
     return {
-      startPattern: /(?:^|\n)\s*(?:(?:item\s*)?3\s*[.:-]?\s*)?d\s*[.:-]?\s*risk\s+factors?\b/gi,
+      startPattern: /(?:^|\n)\s*(?:(?:item\s*)?3\s*[.\u2013\u2014:-]?\s*)?d\s*[.\u2013\u2014:-]?\s*risk\s+factors?\b/gi,
       endPattern: /(?:^|\n)\s*(?:part\s+i\s*)?item\s*4\b(?:\s*[.:-]|\s|$)/i,
     };
   }
 
   if (form.startsWith("40-F")) {
     return {
-      startPattern: /(?:^|\n)\s*(?:(?:item|section)\s*\d+[a-z]?\s*[.:-]?\s*)?(?:risk\s+factors?|principal\s+risks?\s+and\s+uncertainties)\b/gi,
+      startPattern: /(?:^|\n)\s*(?:(?:item|section)\s*\d+[a-z]?\s*[.\u2013\u2014:-]?\s*)?(?:risk\s+factors?|principal\s+risks?\s+and\s+uncertainties)\b/gi,
       endPattern: /(?:^|\n)\s*(?:management(?:'|\u2019)?s\s+discussion(?:\s+and\s+analysis)?|md\s*&\s*a|directors?\s+and\s+officers?|legal\s+proceedings?|dividends?|capital\s+structure|description\s+of\s+capital\s+structure|audit\s+committee|controls?\s+and\s+procedures?|undertakings?|exhibits?|signatures?)\b/i,
     };
   }
 
   return {
-    startPattern: /(?:^|\n)\s*(?:part\s+i\s*)?(?:item\s*)?1\s*a\s*[.:-]?\s*risk\s+factors?\b/gi,
+    startPattern: /(?:^|\n)\s*(?:part\s+i\s*[\u2013\u2014-]?\s*)?(?:item\s*)?1\s*a\s*[.\u2013\u2014:-]?\s*risk\s+factors?\b/gi,
     endPattern: /(?:^|\n)\s*(?:part\s+i{1,3}\s*)?item\s*(?:1\s*[bc]|2)\b(?:\s*[.:-]|\s|$)/i,
   };
 }
@@ -414,6 +414,13 @@ export function extractRiskFactorThemes(html: string, form: string, limit = 8): 
     bucket.statements.push({ text: statement, index, score });
     buckets.set(taxonomy.key, bucket);
   });
+
+  if (!buckets.size && statements.length) {
+    buckets.set(EXECUTION_FALLBACK.key, {
+      taxonomy: EXECUTION_FALLBACK,
+      statements: statements.slice(0, 3).map((text, index) => ({ text, index, score: 1 })),
+    });
+  }
 
   const selected = [...buckets.values()]
     .map((bucket) => ({

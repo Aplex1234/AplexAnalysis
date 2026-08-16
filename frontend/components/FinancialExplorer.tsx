@@ -37,6 +37,13 @@ function formatRawValue(value: number | null, unit: "money" | "percent") {
   return unit === "percent" ? percent(value) : compactMoney(value);
 }
 
+function changeLabel(current: number | null, previous: number | null, unit: "money" | "percent", label: "YoY" | "QoQ") {
+  if (current == null || previous == null) return null;
+  if (unit === "percent") return `${((current - previous) * 100).toFixed(1)} pts ${label}`;
+  if (previous <= 0 || current < 0) return `N/M ${label}`;
+  return `${percent(current / previous - 1)} ${label}`;
+}
+
 export function FinancialExplorer({
   annualPeriods,
   quarterlyPeriods,
@@ -192,6 +199,7 @@ export function FinancialExplorer({
             })}
           </div>
 
+          <span className="horizontal-scroll-hint">Swipe sideways to see all financial columns</span>
           <div className="financial-table-wrap">
             <table className="research-table financial-explorer-table">
               <thead>
@@ -201,14 +209,22 @@ export function FinancialExplorer({
                 </tr>
               </thead>
               <tbody>
-                {[...periods].reverse().map((period) => (
+                {periods.map((period, index) => ({ period, index })).reverse().map(({ period, index }) => (
                   <tr key={`${period.fiscal_year}-${period.period_type}`}>
                     <th>{financialPeriodLabel(period)}</th>
-                    {availableSeries.map((series) => (
-                      <td key={series.key}>
-                        {formatRawValue(financialMetricValue(period, series.key), group.unit)}
-                      </td>
-                    ))}
+                    {availableSeries.map((series) => {
+                      const value = financialMetricValue(period, series.key);
+                      const yoyPeriod = periods[index - 4];
+                      const priorQuarter = periods[index - 1];
+                      const yoy = frequency === "quarterly" ? changeLabel(value, yoyPeriod ? financialMetricValue(yoyPeriod, series.key) : null, group.unit, "YoY") : null;
+                      const qoq = frequency === "quarterly" ? changeLabel(value, priorQuarter ? financialMetricValue(priorQuarter, series.key) : null, group.unit, "QoQ") : null;
+                      return (
+                        <td key={series.key}>
+                          <span>{formatRawValue(value, group.unit)}</span>
+                          {frequency === "quarterly" && <small className="financial-cell-growth">{[yoy, qoq].filter(Boolean).join(" / ") || "Growth N/A"}</small>}
+                        </td>
+                      );
+                    })}
                   </tr>
                 ))}
               </tbody>

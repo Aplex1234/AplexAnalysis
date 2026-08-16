@@ -165,8 +165,17 @@ async function loadQuote(ticker: string, financials: FinancialSource | null, for
 }
 
 async function loadEstimates(ticker: string, financials: FinancialSource | null, forceRefresh = false): Promise<Loaded<AnalystEstimates>> {
+  const withAvailability = (
+    data: AnalystEstimates,
+    item: FreshnessItem,
+  ): FreshnessItem => data.quarterly.length || data.annual.length
+    ? item
+    : freshness("unavailable", data.as_of, null, "No analyst consensus estimates returned by Nasdaq");
   const cached = await readComponentCache<AnalystEstimates>(ticker, "analyst_estimates", COMPONENT_SOURCE_VERSIONS.analyst_estimates);
-  if (cached?.isFresh && !forceRefresh) return { data: cached.data, cached, freshness: freshness("cached", cached.data.as_of, cached.freshUntil, cached.provider ?? "Cached analyst estimates") };
+  if (cached?.isFresh && !forceRefresh) {
+    const item = freshness("cached", cached.data.as_of, cached.freshUntil, cached.provider ?? "Cached analyst estimates");
+    return { data: cached.data, cached, freshness: withAvailability(cached.data, item) };
+  }
   if (cached && !forceRefresh) {
     await scheduleSharedRefresh(`analyst-estimates:${ticker}`, async () => {
       try {
@@ -176,7 +185,8 @@ async function loadEstimates(ticker: string, financials: FinancialSource | null,
         await recordProviderFailure(ticker, "analyst_estimates", error, cached.listingId);
       }
     });
-    return { data: cached.data, cached, freshness: freshness("stale", cached.data.as_of, cached.freshUntil, cached.provider ?? "Last successful estimates; refreshing") };
+    const item = freshness("stale", cached.data.as_of, cached.freshUntil, cached.provider ?? "Last successful estimates; refreshing");
+    return { data: cached.data, cached, freshness: withAvailability(cached.data, item) };
   }
   const refreshStartedAt = Date.now();
   try {
@@ -184,10 +194,14 @@ async function loadEstimates(ticker: string, financials: FinancialSource | null,
     const stored = financials
       ? await writeComponentCache(ticker, financials.profile, "analyst_estimates", estimates, COMPONENT_SOURCE_VERSIONS.analyst_estimates, CACHE_TTLS.analyst_estimates, estimates.provider, refreshStartedAt)
       : null;
-    return { data: estimates, freshness: freshness("live", estimates.as_of, stored?.freshUntil ?? null, estimates.provider) };
+    const item = freshness("live", estimates.as_of, stored?.freshUntil ?? null, estimates.provider);
+    return { data: estimates, freshness: withAvailability(estimates, item) };
   } catch (error) {
     await recordProviderFailure(ticker, "analyst_estimates", error, cached?.listingId);
-    if (cached) return { data: cached.data, cached, freshness: freshness("stale", cached.data.as_of, cached.freshUntil, cached.provider ?? "Last successful estimates") };
+    if (cached) {
+      const item = freshness("stale", cached.data.as_of, cached.freshUntil, cached.provider ?? "Last successful estimates");
+      return { data: cached.data, cached, freshness: withAvailability(cached.data, item) };
+    }
     return { data: null, freshness: freshness("unavailable", null, null, "Analyst estimates unavailable") };
   }
 }
@@ -400,8 +414,16 @@ export function markSnapshotFreshness(analysis: Analysis, status: "cached" | "re
 }
 
 export function buildOverviewSnapshot(analysis: Analysis): Analysis {
+  const overviewFreshness = analysis.freshness ? {
+    ...analysis.freshness,
+    analyst_estimates: freshness("unavailable", null, null, "Loads with Earnings"),
+    comps: freshness("unavailable", null, null, "Loads with Comps"),
+    news: freshness("unavailable", null, null, "Loads with News"),
+    risks: freshness("unavailable", null, null, "Loads with Risks"),
+  } : analysis.freshness;
   return {
     ...analysis,
+    freshness: overviewFreshness,
     data_scope: "overview",
     loaded_sections: ["overview"],
     financials: analysis.financials.map((period) => ({
@@ -433,13 +455,23 @@ export function buildSectionSnapshot(analysis: Analysis, section: AnalysisSectio
   if (section === "overview") return buildOverviewSnapshot(analysis);
   const overview = buildOverviewSnapshot(analysis);
   const needsDetailedFinancials = ["financials", "valuation", "buyTarget"].includes(section);
+  const sectionFreshness = analysis.freshness && overview.freshness ? {
+    ...overview.freshness,
+    analyst_estimates: ["earnings", "financials"].includes(section)
+      ? analysis.freshness.analyst_estimates
+      : overview.freshness.analyst_estimates,
+    comps: section === "comps" ? analysis.freshness.comps : overview.freshness.comps,
+    news: section === "news" ? analysis.freshness.news : overview.freshness.news,
+    risks: section === "risks" ? analysis.freshness.risks : overview.freshness.risks,
+  } : overview.freshness;
   return {
     ...overview,
+    freshness: sectionFreshness,
     data_scope: "partial",
     loaded_sections: ["overview", section],
     financials: needsDetailedFinancials ? analysis.financials : overview.financials,
     quarterly_financials: needsDetailedFinancials ? analysis.quarterly_financials : [],
-    analyst_estimates: section === "earnings" ? analysis.analyst_estimates : overview.analyst_estimates,
+    analyst_estimates: ["earnings", "financials"].includes(section) ? analysis.analyst_estimates : overview.analyst_estimates,
     comps: section === "comps" ? analysis.comps : [],
     filings: section === "filings" ? analysis.filings : [],
     risks: section === "risks" ? analysis.risks : [],
@@ -519,7 +551,7 @@ export async function rebuildAnalysisSectionFromComponentCaches(rawTicker: strin
   const ticker = normalizeTicker(rawTicker);
   const financials = await loadFinancials(ticker, forceRefresh);
   const quote = await loadQuote(ticker, financials.data, forceRefresh);
-  const estimates = section === "earnings"
+  const estimates = ["earnings", "financials"].includes(section)
     ? await loadEstimates(ticker, financials.data, forceRefresh)
     : { data: emptyEstimates(ticker), freshness: freshness("unavailable", null, null, "Loads with Earnings") };
   const peers = section === "comps"

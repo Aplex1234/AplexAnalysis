@@ -198,6 +198,8 @@ body { background: #080c10; }
 .company-price-line span,
 .company-overview > small { color: var(--aplex-muted); font-size: 10px; }
 .company-overview > small { display: block; margin-top: 3px; }
+.company-overview > small a { color: var(--aplex-blue); text-decoration: none; }
+.company-overview > small a:hover { text-decoration: underline; }
 .company-snapshot { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-left: 1px solid var(--aplex-line); background: var(--aplex-elevated); }
 .company-snapshot > div { display: flex; flex-direction: column; justify-content: center; gap: 7px; padding: 18px 22px; border-right: 1px solid var(--aplex-line); border-bottom: 1px solid var(--aplex-line); }
 .company-snapshot > div:nth-child(even) { border-right: 0; }
@@ -561,6 +563,7 @@ body { background: #080c10; }
 .peer-profile-metrics strong { margin-top: 4px; color: var(--aplex-ink); font: 10px "IBM Plex Mono", monospace; font-weight: 550; }
 
 .comps-matrix-scroll { max-width: 100%; overflow-x: auto; }
+.horizontal-scroll-hint { display: none; }
 .comps-matrix-table { width: 100%; min-width: 1120px; border-collapse: separate; border-spacing: 0; font-size: 10px; white-space: nowrap; }
 .comps-matrix-table th,
 .comps-matrix-table td { height: 52px; padding: 0 13px; border-right: 1px solid var(--aplex-line); border-bottom: 1px solid var(--aplex-line); text-align: right; }
@@ -914,6 +917,9 @@ body { background: #080c10; }
 .valuation-growth small { margin-top: 2px; color: var(--aplex-muted); font-size: 8px; }
 .valuation-history-note { margin-bottom: -6px; }
 .recharts-default-tooltip { font-size: 10px; }
+.financial-explorer-table td > span,
+.financial-cell-growth { display: block; }
+.financial-cell-growth { margin-top: 4px; color: var(--aplex-muted); font: 8px "IBM Plex Mono", monospace; white-space: nowrap; }
 
 .terminal-shell .cds--btn--primary { background: var(--aplex-blue); color: #07110d; }
 .terminal-shell .cds--btn--primary:hover { background: color-mix(in srgb, var(--aplex-blue) 86%, #ffffff); }
@@ -955,6 +961,15 @@ body { background: #080c10; }
   .sidebar { position: static; width: auto; padding: 5px 8px; border-right: 0; border-bottom: 1px solid var(--aplex-line); }
   .sidebar-foot { display: none; }
   .sidebar nav { display: flex; gap: 3px; padding: 0; overflow-x: auto; overflow-y: hidden; }
+  .horizontal-scroll-hint {
+    display: block;
+    padding: 7px 12px;
+    color: var(--aplex-muted);
+    font: 8px "IBM Plex Mono", monospace;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+  .nav-scroll-hint { padding: 5px 4px 0; }
   .nav-item { width: auto; min-width: max-content; padding: 0 12px; }
   .nav-item.active { box-shadow: inset 0 -2px 0 var(--aplex-blue); }
   .workspace { margin-left: 0; padding-top: 0; }

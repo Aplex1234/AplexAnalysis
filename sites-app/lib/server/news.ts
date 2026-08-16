@@ -10,6 +10,7 @@ export type NewsItem = {
   scope: NewsScope;
   tickers: string[];
   matched_ticker: boolean;
+  relevance?: "direct" | "ticker" | "industry" | "filing";
   image_url: string | null;
 };
 
@@ -198,6 +199,7 @@ async function fetchYahooCompanyNews(company: NewsCompany): Promise<NewsItem[]> 
       scope: "company",
       tickers: relatedTickers,
       matched_ticker: directMention || focusedTickerMatch,
+      relevance: directMention ? "direct" : "ticker",
       image_url: image,
     }];
   }).slice(0, COMPANY_ITEM_LIMIT);
@@ -212,8 +214,9 @@ async function fetchNasdaqCompanyNews(company: NewsCompany): Promise<NewsItem[]>
     const summary = cleanText(row.description, 300);
     const link = safeUrl(row.url, "https://www.nasdaq.com");
     const publishedAt = isoDate(row.created);
-    const searchable = `${title ?? ""} ${summary ?? ""}`;
-    if (!title || !link || !publishedAt || !mentionsCompany(searchable, company.ticker, company.name)) return [];
+    const titleMention = title ? mentionsCompany(title, company.ticker, company.name) : false;
+    const summaryMention = summary ? mentionsCompany(summary, company.ticker, company.name) : false;
+    if (!title || !link || !publishedAt || (!titleMention && !summaryMention)) return [];
     return [{
       id: `nasdaq:${titleKey(title)}`,
       title,
@@ -224,6 +227,7 @@ async function fetchNasdaqCompanyNews(company: NewsCompany): Promise<NewsItem[]>
       scope: "company",
       tickers: [company.ticker],
       matched_ticker: true,
+      relevance: titleMention ? "direct" : "ticker",
       image_url: null,
     }];
   }).slice(0, COMPANY_ITEM_LIMIT);
@@ -251,6 +255,7 @@ async function fetchGoogleIndustryNews(company: NewsCompany, industryQuery: stri
       scope: "industry",
       tickers: matchedTicker ? [company.ticker] : [],
       matched_ticker: matchedTicker,
+      relevance: "industry",
       image_url: null,
     }];
   }).slice(0, INDUSTRY_ITEM_LIMIT);
@@ -279,6 +284,7 @@ function filingItems(company: NewsCompany, filings: NewsFiling[]): NewsItem[] {
       scope: "filing" as const,
       tickers: [company.ticker],
       matched_ticker: true,
+      relevance: "filing",
       image_url: null,
     }));
 }

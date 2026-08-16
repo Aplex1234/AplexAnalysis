@@ -24,6 +24,7 @@ export function analysisSectionPanelState(
 export function mergeAnalysisSection(current: Analysis, next: Analysis, section: AnalysisSection): Analysis {
   if (next.data_scope === "full") return next;
   const detailedFinancials = ["financials", "valuation", "buyTarget"].includes(section);
+  const includesEstimates = ["earnings", "financials"].includes(section);
   const loadedSections = new Set<AnalysisSection>([
     ...(current.loaded_sections ?? ["overview"]),
     ...(next.loaded_sections ?? [section]),
@@ -32,7 +33,7 @@ export function mergeAnalysisSection(current: Analysis, next: Analysis, section:
   const nextFreshness = next.freshness;
   const mergedFreshness = currentFreshness && nextFreshness ? {
     ...nextFreshness,
-    analyst_estimates: section === "earnings" ? nextFreshness.analyst_estimates : currentFreshness.analyst_estimates,
+    analyst_estimates: includesEstimates ? nextFreshness.analyst_estimates : currentFreshness.analyst_estimates,
     comps: section === "comps" ? nextFreshness.comps : currentFreshness.comps,
     news: section === "news" ? nextFreshness.news : currentFreshness.news,
     risks: section === "risks" ? nextFreshness.risks : currentFreshness.risks,
@@ -49,7 +50,7 @@ export function mergeAnalysisSection(current: Analysis, next: Analysis, section:
     loaded_sections: [...loadedSections],
     financials: detailedFinancials ? next.financials : current.financials,
     quarterly_financials: detailedFinancials ? next.quarterly_financials : current.quarterly_financials,
-    analyst_estimates: section === "earnings" ? next.analyst_estimates : current.analyst_estimates,
+    analyst_estimates: includesEstimates ? next.analyst_estimates : current.analyst_estimates,
     comps: section === "comps" ? next.comps : current.comps,
     peer_selection: section === "comps" ? next.peer_selection : current.peer_selection,
     filings: section === "filings" ? next.filings : current.filings,
@@ -58,7 +59,7 @@ export function mergeAnalysisSection(current: Analysis, next: Analysis, section:
     freshness: mergedFreshness,
     provenance: {
       ...next.provenance,
-      analyst_estimates: section === "earnings" ? next.provenance.analyst_estimates : current.provenance.analyst_estimates,
+      analyst_estimates: includesEstimates ? next.provenance.analyst_estimates : current.provenance.analyst_estimates,
       risk_factors: section === "risks" ? next.provenance.risk_factors : current.provenance.risk_factors,
       news: section === "news" ? next.provenance.news : current.provenance.news,
       comparables: section === "comps" ? next.provenance.comparables : current.provenance.comparables,

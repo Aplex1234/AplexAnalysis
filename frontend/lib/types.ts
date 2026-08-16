@@ -111,6 +111,7 @@ export type NewsItem = {
   scope: "company" | "industry" | "filing";
   tickers: string[];
   matched_ticker: boolean;
+  relevance?: "direct" | "ticker" | "industry" | "filing";
   image_url: string | null;
 };
 

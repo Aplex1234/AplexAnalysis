@@ -6,11 +6,12 @@ import { Launch, Renew, Rss } from "@carbon/icons-react";
 
 import type { Analysis, NewsItem } from "@/lib/types";
 
-type NewsFilter = "all" | NewsItem["scope"];
+type NewsFilter = "all" | "direct" | "ticker" | "industry" | "filing";
 
 const FILTERS: Array<{ key: NewsFilter; label: string }> = [
   { key: "all", label: "All" },
-  { key: "company", label: "Company" },
+  { key: "direct", label: "Company coverage" },
+  { key: "ticker", label: "Ticker mentions" },
   { key: "industry", label: "Industry" },
   { key: "filing", label: "SEC filings" },
 ];
@@ -32,13 +33,20 @@ function scopeLabel(scope: NewsItem["scope"]) {
   return scope === "industry" ? "Industry" : "Company";
 }
 
+function relevanceOf(item: NewsItem): Exclude<NewsFilter, "all"> {
+  if (item.scope === "filing") return "filing";
+  if (item.scope === "industry") return "industry";
+  return item.relevance === "ticker" ? "ticker" : "direct";
+}
+
 function NewsRow({ item, ticker, lead = false }: { item: NewsItem; ticker: string; lead?: boolean }) {
+  const relevance = relevanceOf(item);
   return (
     <article className={lead ? "news-item news-lead" : "news-item"}>
       <div className="news-item-index" aria-hidden="true">{item.scope === "filing" ? "SEC" : item.source.slice(0, 2).toUpperCase()}</div>
       <div className="news-item-body">
         <div className="news-meta">
-          <span className={`news-scope news-scope-${item.scope}`}>{scopeLabel(item.scope)}</span>
+          <span className={`news-scope news-scope-${relevance}`}>{relevance === "ticker" ? "Ticker mention" : scopeLabel(item.scope)}</span>
           <span>{item.source}</span>
           <time dateTime={item.published_at}>{formatPublished(item.published_at)}</time>
           {item.matched_ticker && <span className="news-ticker-match">{ticker}</span>}
@@ -58,10 +66,11 @@ function NewsRow({ item, ticker, lead = false }: { item: NewsItem; ticker: strin
 export function NewsView({ analysis, onRetry }: { analysis: Analysis; onRetry: () => void }) {
   const [filter, setFilter] = useState<NewsFilter>("all");
   const items = useMemo(
-    () => filter === "all" ? analysis.news.items : analysis.news.items.filter((item) => item.scope === filter),
+    () => filter === "all" ? analysis.news.items : analysis.news.items.filter((item) => relevanceOf(item) === filter),
     [analysis.news.items, filter],
   );
-  const companyCount = analysis.news.items.filter((item) => item.scope === "company").length;
+  const directCount = analysis.news.items.filter((item) => relevanceOf(item) === "direct").length;
+  const tickerCount = analysis.news.items.filter((item) => relevanceOf(item) === "ticker").length;
   const industryCount = analysis.news.items.filter((item) => item.scope === "industry").length;
   const filingCount = analysis.news.items.filter((item) => item.scope === "filing").length;
   const newsFreshness = analysis.freshness?.news;
@@ -73,7 +82,7 @@ export function NewsView({ analysis, onRetry }: { analysis: Analysis; onRetry: (
           <div>
             <span className="news-kicker">LATEST COVERAGE</span>
             <h2 id="news-heading">{analysis.company.name} news</h2>
-            <p>Company coverage, ticker-matched stories, industry reporting and official SEC updates.</p>
+            <p>Meaningful company coverage is separated from simple ticker mentions, broader industry reporting and official SEC updates.</p>
           </div>
           <div className="news-count"><strong>{analysis.news.items.length}</strong><span>recent items</span></div>
         </header>
@@ -88,7 +97,7 @@ export function NewsView({ analysis, onRetry }: { analysis: Analysis; onRetry: (
               onClick={() => setFilter(option.key)}
             >
               {option.label}
-              <span>{option.key === "all" ? analysis.news.items.length : option.key === "company" ? companyCount : option.key === "industry" ? industryCount : filingCount}</span>
+              <span>{option.key === "all" ? analysis.news.items.length : option.key === "direct" ? directCount : option.key === "ticker" ? tickerCount : option.key === "industry" ? industryCount : filingCount}</span>
             </button>
           ))}
         </div>
@@ -98,7 +107,7 @@ export function NewsView({ analysis, onRetry }: { analysis: Analysis; onRetry: (
             {items.length ? items.map((item, index) => <NewsRow key={item.id} item={item} ticker={analysis.company.ticker} lead={index === 0} />) : (
               <div className="news-empty">
                 <Rss size={30} />
-                <h3>No recent {filter === "all" ? "coverage" : scopeLabel(filter as NewsItem["scope"]).toLowerCase()} found</h3>
+                <h3>No recent {filter === "all" ? "coverage" : FILTERS.find((option) => option.key === filter)?.label.toLowerCase()} found</h3>
                 <p>Try another filter. Source coverage can vary by company and trading day.</p>
                 {newsFreshness?.status === "unavailable" && <Button kind="tertiary" renderIcon={Renew} onClick={onRetry}>Retry news sources</Button>}
               </div>
@@ -111,7 +120,8 @@ export function NewsView({ analysis, onRetry }: { analysis: Analysis; onRetry: (
             <dl>
               <div><dt>Updated</dt><dd>{formatPublished(analysis.news.fetched_at)}</dd></div>
               <div><dt>Status</dt><dd>{newsFreshness?.status ?? "live"}</dd></div>
-              <div><dt>Company items</dt><dd>{companyCount}</dd></div>
+              <div><dt>Company coverage</dt><dd>{directCount}</dd></div>
+              <div><dt>Ticker mentions</dt><dd>{tickerCount}</dd></div>
               <div><dt>Industry items</dt><dd>{industryCount}</dd></div>
             </dl>
             <div className="news-provider-list">
