@@ -17,10 +17,13 @@ import { compactMoney, percent } from "@/lib/format";
 import {
   availableFinancialSeries,
   buildFinancialExplorerData,
+  buildFinancialGrowthData,
   FINANCIAL_GROUPS,
+  financialGrowthValue,
   financialMetricValue,
   financialPeriodLabel,
   latestFinancialValue,
+  type FinancialGrowthMode,
   type FinancialGroupKey,
   type FinancialMetricKey,
 } from "@/lib/financials";
@@ -37,11 +40,23 @@ function formatRawValue(value: number | null, unit: "money" | "percent") {
   return unit === "percent" ? percent(value) : compactMoney(value);
 }
 
-function changeLabel(current: number | null, previous: number | null, unit: "money" | "percent", label: "YoY" | "QoQ") {
-  if (current == null || previous == null) return null;
-  if (unit === "percent") return `${((current - previous) * 100).toFixed(1)} pts ${label}`;
-  if (previous <= 0 || current < 0) return `N/M ${label}`;
-  return `${percent(current / previous - 1)} ${label}`;
+function formatGrowthChartValue(value: number | string, unit: "money" | "percent") {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "N/A";
+  return unit === "percent" ? `${numeric.toFixed(1)} pts` : `${numeric.toFixed(1)}%`;
+}
+
+function changeBadge(current: number | null, previous: number | null, unit: "money" | "percent", label: "YoY" | "QoQ") {
+  const value = financialGrowthValue(current, previous, unit);
+  if (value == null) return { label, value: "N/M", tone: "unavailable" } as const;
+  const formatted = unit === "percent"
+    ? `${value > 0 ? "+" : ""}${value.toFixed(1)} pts`
+    : `${value > 0 ? "+" : ""}${value.toFixed(1)}%`;
+  return {
+    label,
+    value: formatted,
+    tone: value > 0 ? "positive" : value < 0 ? "negative" : "neutral",
+  } as const;
 }
 
 export function FinancialExplorer({
@@ -53,14 +68,25 @@ export function FinancialExplorer({
 }) {
   const [groupKey, setGroupKey] = useState<FinancialGroupKey>("income");
   const [frequency, setFrequency] = useState<"annual" | "quarterly">("annual");
+  const [chartMode, setChartMode] = useState<"values" | FinancialGrowthMode>("values");
   const [hiddenSeries, setHiddenSeries] = useState<FinancialMetricKey[]>([]);
   const periods = frequency === "quarterly" ? quarterlyPeriods : annualPeriods;
   const group = FINANCIAL_GROUPS.find((item) => item.key === groupKey) ?? FINANCIAL_GROUPS[0];
   const availableSeries = useMemo(() => availableFinancialSeries(periods, group), [periods, group]);
-  const data = useMemo(() => buildFinancialExplorerData(periods, group), [periods, group]);
+  const data = useMemo(
+    () => chartMode === "values"
+      ? buildFinancialExplorerData(periods, group)
+      : buildFinancialGrowthData(periods, group, chartMode),
+    [periods, group, chartMode],
+  );
   const visibleSeries = availableSeries.filter((series) => !hiddenSeries.includes(series.key));
+  const chartIsGrowth = chartMode !== "values";
+  const chartModeLabel = chartMode === "yoy" ? "year-over-year growth" : chartMode === "qoq" ? "quarter-over-quarter growth" : "reported values";
 
   useEffect(() => setHiddenSeries([]), [groupKey, frequency]);
+  useEffect(() => {
+    if (frequency === "annual") setChartMode("values");
+  }, [frequency]);
 
   function toggleSeries(key: FinancialMetricKey) {
     const isHidden = hiddenSeries.includes(key);
@@ -121,10 +147,37 @@ export function FinancialExplorer({
             })}
           </div>
 
+          {frequency === "quarterly" && (
+            <div className="financial-chart-toolbar">
+              <div>
+                <strong>Chart view</strong>
+                <span>{chartIsGrowth ? (group.unit === "percent" ? "Change in percentage points" : "Percentage change") : "Reported financial values"}</span>
+              </div>
+              <div className="chart-mode-control" role="tablist" aria-label="Financial chart view">
+                {([
+                  ["values", "Values"],
+                  ["yoy", "YoY growth"],
+                  ["qoq", "QoQ growth"],
+                ] as const).map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    role="tab"
+                    aria-selected={chartMode === mode}
+                    className={chartMode === mode ? "active" : ""}
+                    onClick={() => setChartMode(mode)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div
             className="explorer-chart"
             role="img"
-            aria-label={`${group.label} history from ${periods[0] ? financialPeriodLabel(periods[0]) : "the first available period"} through ${periods.at(-1) ? financialPeriodLabel(periods.at(-1)!) : "the latest period"}`}
+            aria-label={`${group.label} ${chartModeLabel} from ${periods[0] ? financialPeriodLabel(periods[0]) : "the first available period"} through ${periods.at(-1) ? financialPeriodLabel(periods.at(-1)!) : "the latest period"}`}
           >
             <ResponsiveContainer width="100%" height={360}>
               <ComposedChart data={data} margin={{ top: 20, right: 18, bottom: 4, left: 2 }}>
@@ -136,7 +189,7 @@ export function FinancialExplorer({
                   tick={{ fill: "var(--aplex-muted)" }}
                 />
                 <YAxis
-                  tickFormatter={(value) => formatChartValue(value, group.unit)}
+                  tickFormatter={(value) => chartIsGrowth ? formatGrowthChartValue(value, group.unit) : formatChartValue(value, group.unit)}
                   tickLine={false}
                   axisLine={false}
                   tick={{ fill: "var(--aplex-muted)" }}
@@ -152,10 +205,10 @@ export function FinancialExplorer({
                     boxShadow: "var(--aplex-shadow)",
                     color: "var(--aplex-ink)",
                   }}
-                  formatter={(value) => formatChartValue(value as number | string, group.unit)}
+                  formatter={(value) => chartIsGrowth ? formatGrowthChartValue(value as number | string, group.unit) : formatChartValue(value as number | string, group.unit)}
                 />
                 {visibleSeries.map((series) =>
-                  series.chart === "bar" ? (
+                  !chartIsGrowth && series.chart === "bar" ? (
                     <Bar
                       key={series.key}
                       dataKey={series.key}
@@ -172,7 +225,7 @@ export function FinancialExplorer({
                       key={series.key}
                       type="monotone"
                       dataKey={series.key}
-                      name={series.label}
+                      name={chartIsGrowth ? `${series.label} ${chartMode === "yoy" ? "YoY" : "QoQ"}` : series.label}
                       stroke={series.color}
                       strokeWidth={2.25}
                       dot={{ r: 3, fill: "var(--aplex-panel)", strokeWidth: 2 }}
@@ -216,12 +269,21 @@ export function FinancialExplorer({
                       const value = financialMetricValue(period, series.key);
                       const yoyPeriod = periods[index - 4];
                       const priorQuarter = periods[index - 1];
-                      const yoy = frequency === "quarterly" ? changeLabel(value, yoyPeriod ? financialMetricValue(yoyPeriod, series.key) : null, group.unit, "YoY") : null;
-                      const qoq = frequency === "quarterly" ? changeLabel(value, priorQuarter ? financialMetricValue(priorQuarter, series.key) : null, group.unit, "QoQ") : null;
+                      const yoy = frequency === "quarterly" ? changeBadge(value, yoyPeriod ? financialMetricValue(yoyPeriod, series.key) : null, group.unit, "YoY") : null;
+                      const qoq = frequency === "quarterly" ? changeBadge(value, priorQuarter ? financialMetricValue(priorQuarter, series.key) : null, group.unit, "QoQ") : null;
                       return (
                         <td key={series.key}>
                           <span>{formatRawValue(value, group.unit)}</span>
-                          {frequency === "quarterly" && <small className="financial-cell-growth">{[yoy, qoq].filter(Boolean).join(" / ") || "Growth N/A"}</small>}
+                          {frequency === "quarterly" && (
+                            <span className="financial-cell-growth">
+                              {[yoy, qoq].filter((change) => change != null).map((change) => change && (
+                                <span key={change.label} className={`financial-growth-badge ${change.tone}`}>
+                                  <span>{change.label}</span>
+                                  <strong>{change.value}</strong>
+                                </span>
+                              ))}
+                            </span>
+                          )}
                         </td>
                       );
                     })}

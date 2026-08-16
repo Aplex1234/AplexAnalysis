@@ -1,7 +1,9 @@
 export {
   availableFinancialSeries,
   buildFinancialExplorerData,
+  buildFinancialGrowthData,
   FINANCIAL_GROUPS,
+  financialGrowthValue,
   financialMetricValue,
   financialPeriodLabel,
   latestFinancialValue,
@@ -9,6 +11,7 @@ export {
 
 export type {
   FinancialGroupDefinition,
+  FinancialGrowthMode,
   FinancialGroupKey,
   FinancialMetricKey,
   FinancialSeriesDefinition,

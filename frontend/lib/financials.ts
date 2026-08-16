@@ -2,6 +2,7 @@ import type { FinancialPeriod, FinancialValues } from "./types";
 
 export type FinancialGroupKey = "income" | "margins" | "cashFlow" | "balanceSheet";
 export type FinancialUnit = "money" | "percent";
+export type FinancialGrowthMode = "yoy" | "qoq";
 export type FinancialMetricKey =
   | keyof FinancialValues
   | "gross_margin"
@@ -120,6 +121,38 @@ export function buildFinancialExplorerData(periods: FinancialPeriod[], group: Fi
         : MARGIN_KEYS.has(series.key)
           ? rawValue * 100
           : rawValue / 1_000_000_000;
+    }
+    return point;
+  });
+}
+
+export function financialGrowthValue(
+  current: number | null,
+  previous: number | null,
+  unit: FinancialUnit,
+): number | null {
+  if (current == null || previous == null) return null;
+  if (unit === "percent") return (current - previous) * 100;
+  if (previous <= 0 || current < 0) return null;
+  return (current / previous - 1) * 100;
+}
+
+export function buildFinancialGrowthData(
+  periods: FinancialPeriod[],
+  group: FinancialGroupDefinition,
+  mode: FinancialGrowthMode,
+) {
+  const lag = mode === "yoy" ? 4 : 1;
+  return periods.map((period, index) => {
+    const point: Record<string, number | string | null> & { year: number; label: string } = {
+      year: period.fiscal_year,
+      label: financialPeriodLabel(period),
+    };
+    for (const series of group.series) {
+      const previousPeriod = periods[index - lag];
+      const current = financialMetricValue(period, series.key);
+      const previous = previousPeriod ? financialMetricValue(previousPeriod, series.key) : null;
+      point[series.key] = financialGrowthValue(current, previous, group.unit);
     }
     return point;
   });

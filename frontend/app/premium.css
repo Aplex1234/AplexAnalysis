@@ -919,7 +919,14 @@ body { background: #080c10; }
 .recharts-default-tooltip { font-size: 10px; }
 .financial-explorer-table td > span,
 .financial-cell-growth { display: block; }
-.financial-cell-growth { margin-top: 4px; color: var(--aplex-muted); font: 8px "IBM Plex Mono", monospace; white-space: nowrap; }
+.financial-cell-growth { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; margin-top: 7px; white-space: nowrap; }
+.financial-growth-badge { display: inline-flex; align-items: center; gap: 5px; min-height: 24px; padding: 3px 7px; border: 1px solid var(--aplex-line); border-radius: 6px; background: var(--aplex-elevated); font: 11px "IBM Plex Mono", monospace; }
+.financial-growth-badge > span { color: var(--aplex-muted); font-size: 9px; font-weight: 650; letter-spacing: .04em; }
+.financial-growth-badge > strong { font-size: 11px; font-weight: 700; }
+.financial-growth-badge.positive > strong { color: var(--aplex-positive); }
+.financial-growth-badge.negative > strong { color: var(--aplex-negative); }
+.financial-growth-badge.neutral > strong,
+.financial-growth-badge.unavailable > strong { color: var(--aplex-muted); }
 
 .terminal-shell .cds--btn--primary { background: var(--aplex-blue); color: #07110d; }
 .terminal-shell .cds--btn--primary:hover { background: color-mix(in srgb, var(--aplex-blue) 86%, #ffffff); }

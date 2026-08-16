@@ -4,7 +4,7 @@ import test from "node:test";
 
 import { buildFinancialChartData, formatBillions } from "../../frontend/lib/chart.ts";
 import { compactShares } from "../../frontend/lib/format.ts";
-import { buildFinancialExplorerData, FINANCIAL_GROUPS } from "../../frontend/lib/financials.ts";
+import { buildFinancialExplorerData, buildFinancialGrowthData, financialGrowthValue, FINANCIAL_GROUPS } from "../../frontend/lib/financials.ts";
 import { projectMultipleValuation } from "../../frontend/lib/multiple-valuation.ts";
 import { analysisSectionPanelState, mergeAnalysisSection } from "../../frontend/lib/analysis-sections.ts";
 import { normalizeCompanyFacts, normalizeQuarterlyCompanyFacts } from "../lib/server/sec-normalizer.ts";
@@ -399,7 +399,34 @@ test("shows mobile horizontal-scroll hints and quarterly YoY and QoQ comparisons
   assert.match(explorer, /"YoY"/);
   assert.match(explorer, /"QoQ"/);
   assert.match(explorer, /N\/M/);
+  assert.match(explorer, /YoY growth/);
+  assert.match(explorer, /QoQ growth/);
+  assert.match(explorer, /financial-growth-badge/);
+  assert.match(css, /\.financial-growth-badge[\s\S]*?font:\s*11px/);
   assert.match(css, /@media \(max-width: 960px\)[\s\S]*?\.horizontal-scroll-hint\s*\{[\s\S]*?display:\s*block/);
+});
+
+test("plots quarterly YoY and QoQ growth on a separate percentage scale", () => {
+  const periods = Array.from({ length: 6 }, (_, index) => ({
+    fiscal_year: index < 4 ? 2025 : 2026,
+    fiscal_quarter: (index % 4) + 1,
+    period_type: `Q${(index % 4) + 1}`,
+    period_end: null,
+    filed_at: null,
+    accession_number: null,
+    form: "10-Q",
+    currency: "USD",
+    values: { revenue: [100, 110, 120, 130, 150, 165][index], net_income: [10, 11, 12, 13, 15, 16.5][index] },
+    provenance: {},
+  }));
+  const incomeGroup = FINANCIAL_GROUPS.find((group) => group.key === "income");
+  const yoy = buildFinancialGrowthData(periods, incomeGroup, "yoy");
+  const qoq = buildFinancialGrowthData(periods, incomeGroup, "qoq");
+
+  assert.equal(yoy[4].revenue, 50);
+  assert.ok(Math.abs(qoq[5].revenue - 10) < 1e-9);
+  assert.equal(financialGrowthValue(-10, -20, "money"), null);
+  assert.ok(Math.abs(financialGrowthValue(0.3, 0.25, "percent") - 5) < 1e-9);
 });
 
 test("keeps deferred-section loading and errors scoped to the requested page", () => {

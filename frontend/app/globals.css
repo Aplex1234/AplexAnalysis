@@ -759,6 +759,23 @@ button, input { font: inherit; }
 .series-controls button > span { width: 9px; height: 9px; border-radius: 3px; opacity: .3; }
 .series-controls button.active > span { opacity: 1; }
 
+.financial-chart-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 3px 27px 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--aplex-line);
+}
+.financial-chart-toolbar > div:first-child { display: grid; gap: 3px; }
+.financial-chart-toolbar strong { color: var(--aplex-ink); font-size: 12px; font-weight: 600; }
+.financial-chart-toolbar > div:first-child span { color: var(--aplex-muted); font-size: 10px; }
+.chart-mode-control { display: flex; gap: 3px; padding: 3px; border: 1px solid var(--aplex-line); border-radius: 9px; background: var(--aplex-elevated); }
+.chart-mode-control button { min-height: 30px; padding: 0 11px; border: 0; border-radius: 6px; background: transparent; color: var(--aplex-muted); cursor: pointer; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.chart-mode-control button:hover { color: var(--aplex-ink); }
+.chart-mode-control button.active { background: var(--aplex-panel); color: var(--aplex-ink); box-shadow: 0 2px 8px rgb(31 50 81 / 7%); }
+
 .explorer-chart { padding: 0 16px 2px 4px; }
 .latest-series-grid {
   display: grid;
@@ -910,6 +927,9 @@ button, input { font: inherit; }
   .frequency-control button { flex: 1; }
   .series-controls { flex-wrap: nowrap; overflow-x: auto; padding-inline: 18px; }
   .series-controls button { min-width: max-content; }
+  .financial-chart-toolbar { align-items: stretch; flex-direction: column; margin-inline: 18px; }
+  .chart-mode-control { width: 100%; overflow-x: auto; }
+  .chart-mode-control button { flex: 1 0 max-content; }
   .explorer-chart { margin-left: -8px; padding-right: 4px; }
   .latest-series-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .latest-series-grid > div,
