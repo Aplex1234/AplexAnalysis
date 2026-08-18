@@ -57,13 +57,61 @@ button, input { font: inherit; }
 .ticker-search .cds--text-input:focus { outline: none; border-bottom-color: var(--aplex-blue); }
 .ticker-search .cds--btn { min-height: 47px; }
 .search-results { position: absolute; z-index: 80; top: 48px; left: -1px; right: -1px; max-height: 360px; overflow-y: auto; background: #fff; color: #161616; border: 1px solid #8d8d8d; border-top: 0; box-shadow: 0 8px 20px rgb(0 0 0 / 18%); }
-.search-results button { width: 100%; min-height: 58px; display: grid; grid-template-columns: 66px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 9px 12px; border: 0; border-bottom: 1px solid #e0e0e0; background: #fff; color: #161616; text-align: left; cursor: pointer; }
+.search-results button { width: 100%; min-height: 58px; display: grid; grid-template-columns: 32px 56px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 9px 12px; border: 0; border-bottom: 1px solid #e0e0e0; background: #fff; color: #161616; text-align: left; cursor: pointer; }
 .search-results button:hover, .search-results button.is-highlighted { background: #e8f1ff; box-shadow: inset 3px 0 0 var(--aplex-blue); }
 .search-results strong { font: 600 13px "IBM Plex Mono", monospace; }
 .search-results span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .search-results small { color: #6f6f6f; font: 10px "IBM Plex Mono", monospace; }
 .search-results p { margin: 0; padding: 16px; color: #6f6f6f; font-size: 12px; }
 .search-status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Company Logo Component Base Styles */
+.company-logo-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  user-select: none;
+  background: #f4f4f4;
+  border: 1px solid #c6c6c6;
+  box-sizing: border-box;
+}
+
+.company-logo-wrap[data-loaded="true"] {
+  background: #ffffff;
+  border-color: #d0d7de;
+}
+
+.company-logo-xs { width: 22px; height: 22px; border-radius: 5px; font-size: 9px; padding: 2px; }
+.company-logo-sm { width: 32px; height: 32px; border-radius: 8px; font-size: 11px; padding: 3px; }
+.company-logo-md { width: 44px; height: 44px; border-radius: 10px; font-size: 14px; padding: 5px; }
+.company-logo-lg { width: 86px; height: 86px; border-radius: 14px; font-size: 22px; padding: 8px; }
+
+.company-logo-img {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  transition: opacity 0.18s ease-in-out;
+}
+.company-logo-img.is-loading { opacity: 0; position: absolute; }
+.company-logo-img.is-visible { opacity: 1; }
+
+.company-logo-initials {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: inherit;
+  font-family: "IBM Plex Mono", monospace;
+  font-weight: 650;
+  letter-spacing: -0.04em;
+  text-transform: uppercase;
+  user-select: none;
+}
 .topbar-status { justify-self: end; display: flex; gap: 22px; padding-right: 20px; color: #c6c6c6; font: 11px "IBM Plex Mono", monospace; }
 
 .sidebar {

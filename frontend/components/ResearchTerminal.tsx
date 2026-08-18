@@ -33,6 +33,7 @@ import { fetchAnalysis, prefetchAnalysis, searchSecurities } from "@/lib/api";
 import { analysisSectionPanelState, isAnalysisSectionLoaded, mergeAnalysisSection } from "@/lib/analysis-sections";
 import { compactMoney, money, multiple, percent, titleCase } from "@/lib/format";
 import type { Analysis, AnalysisSection, ComparableCompany, SecuritySearchResult } from "@/lib/types";
+import { CompanyLogo } from "./CompanyLogo";
 
 const FinancialChart = lazy(() => import("./FinancialChart").then((module) => ({ default: module.FinancialChart })));
 const FinancialExplorer = lazy(() => import("./FinancialExplorer").then((module) => ({ default: module.FinancialExplorer })));
@@ -389,6 +390,7 @@ export function ResearchTerminal({ initialAnalysis = null }: { initialAnalysis?:
                       }}
                       onClick={() => selectSecurity(result)}
                     >
+                      <CompanyLogo ticker={result.ticker} name={result.name} size="sm" alt="" />
                       <strong>{result.ticker}</strong>
                       <span>{result.name}</span>
                       <small>{result.exchange} / {result.mic}</small>
@@ -414,6 +416,7 @@ export function ResearchTerminal({ initialAnalysis = null }: { initialAnalysis?:
                         }}
                         onClick={() => selectSecurity(result)}
                       >
+                        <CompanyLogo ticker={result.ticker} name={result.name} size="sm" alt="" />
                         <strong>{result.ticker}</strong>
                         <span>{result.name}</span>
                         <small>{result.exchange} / {result.mic}</small>
@@ -556,7 +559,13 @@ function CompanyHeader({ analysis, refreshing, refreshStatus, onRefresh }: {
   return (
     <section className="company-header">
       <div className="company-identity">
-        <div className="company-avatar" aria-hidden="true">{analysis.company.ticker.slice(0, 2)}</div>
+        <CompanyLogo
+          ticker={analysis.company.ticker}
+          name={analysis.company.name}
+          size="lg"
+          priority
+          className="company-avatar"
+        />
         <div className="company-overview">
           <div className="company-title-row">
             <h1>{analysis.company.name}</h1>
@@ -928,7 +937,7 @@ function CompsView({ analysis, onSelectCompany }: { analysis: Analysis; onSelect
           <div className="peer-directory-grid">
             {analysis.comps.map((peer) => (
               <button key={peer.ticker} type="button" className="peer-profile-card" onClick={() => onSelectCompany(peer.ticker)} aria-label={`Open ${peer.name} profile`}>
-                <div className="peer-profile-identity"><span>{peer.ticker.slice(0, 2)}</span><div><strong>{peer.name}</strong><small>{peer.ticker}</small></div><ArrowRight size={18} /></div>
+                <div className="peer-profile-identity"><CompanyLogo ticker={peer.ticker} name={peer.name} size="md" /><div><strong>{peer.name}</strong><small>{peer.ticker}</small></div><ArrowRight size={18} /></div>
                 <p>{peer.selection_reason}</p>
                 <div className="peer-profile-metrics"><span><small>Market cap</small><strong>{compactMoney(peer.market_cap)}</strong></span><span><small>Revenue growth</small><strong className={growthClass(peer.revenue_growth)}>{percent(peer.revenue_growth)}</strong></span><span><small>P / E</small><strong>{multiple(peer.pe)}</strong></span></div>
               </button>
@@ -956,7 +965,7 @@ function CompsView({ analysis, onSelectCompany }: { analysis: Analysis; onSelect
                   <tr key={row.ticker} className={isTarget ? "is-target" : ""}>
                     <th scope="row">
                       <button type="button" className="comps-company-link" onClick={() => onSelectCompany(row.ticker)} aria-label={isTarget ? `Open ${row.name} overview` : `Open ${row.name} profile`}>
-                        <span className="comps-company-avatar">{row.ticker.slice(0, 2)}</span>
+                        <CompanyLogo ticker={row.ticker} name={row.name} size="sm" className="comps-company-avatar" />
                         <span className="comps-company-copy"><strong>{row.name}</strong><small>{row.ticker}{isTarget ? " / Current company" : ""}</small></span>
                       </button>
                     </th>
@@ -992,6 +1001,7 @@ function CompsView({ analysis, onSelectCompany }: { analysis: Analysis; onSelect
             {analysis.comps.map((peer) => (
               <article key={peer.ticker}>
                 <button type="button" className="peer-rationale-link" onClick={() => onSelectCompany(peer.ticker)}>
+                  <CompanyLogo ticker={peer.ticker} name={peer.name} size="xs" />
                   <span>{peer.ticker}</span><strong>{peer.name}</strong><ArrowRight size={16} />
                 </button>
                 <p>{peer.selection_reason}</p>

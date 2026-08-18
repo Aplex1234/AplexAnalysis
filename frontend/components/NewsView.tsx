@@ -5,6 +5,7 @@ import { Button } from "@carbon/react";
 import { Launch, Renew, Rss } from "@carbon/icons-react";
 
 import type { Analysis, NewsItem } from "@/lib/types";
+import { CompanyLogo } from "./CompanyLogo";
 
 type NewsFilter = "all" | "direct" | "ticker" | "industry" | "filing";
 
@@ -41,9 +42,14 @@ function relevanceOf(item: NewsItem): Exclude<NewsFilter, "all"> {
 
 function NewsRow({ item, ticker, lead = false }: { item: NewsItem; ticker: string; lead?: boolean }) {
   const relevance = relevanceOf(item);
+  const itemTicker = (item.matched_ticker ? ticker : item.tickers?.[0]) || ticker;
   return (
     <article className={lead ? "news-item news-lead" : "news-item"}>
-      <div className="news-item-index" aria-hidden="true">{item.scope === "filing" ? "SEC" : item.source.slice(0, 2).toUpperCase()}</div>
+      {item.scope === "filing" ? (
+        <div className="news-item-index" aria-hidden="true">SEC</div>
+      ) : (
+        <CompanyLogo ticker={itemTicker} name={item.source} size="sm" className="news-item-logo" alt="" />
+      )}
       <div className="news-item-body">
         <div className="news-meta">
           <span className={`news-scope news-scope-${relevance}`}>{relevance === "ticker" ? "Ticker mention" : scopeLabel(item.scope)}</span>
