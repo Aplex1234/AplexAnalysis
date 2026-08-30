@@ -49,16 +49,3 @@ From `backend`, run `pytest`. Tests verify all three milestone tickers produce f
 ## Disclaimer
 
 This software is for research and education. It is not investment advice. Verify source filings and assumptions before making financial decisions.
-
-
-How to open:
-
-Step 1 - Open the terminal in the right folder:
-
-Open folder C:/Users/alexk/Documents/Codex/2026-08-06/AplexAnalysis in File Explorer (this is the correct moved location ChatGPT mentioned)
-Double-click to go inside sites-app
-Click in the address bar at the top where it says ...AplexAnalysis\sites-app, type cmd and press Enter. A black window will open.
-
-type this: npm.cmd run dev
-
-Wait 10-20 seconds until it says Local: http://localhost:5173 or http://localhost:3000
