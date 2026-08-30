@@ -4,7 +4,7 @@ import test from "node:test";
 
 import { buildFinancialChartData, formatBillions } from "../../frontend/lib/chart.ts";
 import { compactShares } from "../../frontend/lib/format.ts";
-import { buildFinancialExplorerData, buildFinancialGrowthData, financialGrowthValue, FINANCIAL_GROUPS } from "../../frontend/lib/financials.ts";
+import { buildFinancialExplorerData, buildFinancialGrowthData, financialGrowthValue, FINANCIAL_GROUPS, formatScaledMoney, getFinancialScale } from "../../frontend/lib/financials.ts";
 import { projectMultipleValuation } from "../../frontend/lib/multiple-valuation.ts";
 import { analysisSectionPanelState, mergeAnalysisSection } from "../../frontend/lib/analysis-sections.ts";
 import { normalizeCompanyFacts, normalizeQuarterlyCompanyFacts } from "../lib/server/sec-normalizer.ts";
@@ -17,6 +17,7 @@ import { buildOverviewSnapshot, buildSectionSnapshot } from "../lib/server/analy
 import { ANALYSIS_SCHEMA_VERSION, COMPONENT_SOURCE_VERSIONS, NORMALIZATION_VERSION, SCORE_MODEL_VERSION, VALUATION_MODEL_VERSION } from "../lib/server/model-versions.ts";
 import { extractPeerBusinessContext, rankPeerCandidates } from "../lib/server/peer-selection.ts";
 import { fetchCompanyNews } from "../lib/server/news.ts";
+import { getInitialsBadgeStyle, getLogoCandidates, getTickerInitials, normalizeTicker } from "../../frontend/lib/logo.ts";
 import { parseSecurityMaster, searchSecurityEntries } from "../lib/server/security-master.ts";
 
 async function render() {
@@ -880,6 +881,70 @@ test("financial chart scales operating income to readable billions", () => {
   assert.equal(formatBillions(point.freeCashFlow), "$11.6B");
 });
 
+test("financial chart and explorer dynamically scale to millions for smaller companies like POCI", () => {
+  const pociPeriods = [
+    {
+      fiscal_year: 2024,
+      period_type: "FY",
+      period_end: "2024-12-31",
+      filed_at: "2025-03-01",
+      accession_number: "poci-2024",
+      form: "10-K",
+      currency: "USD",
+      values: {
+        revenue: 22_500_000,
+        gross_profit: 10_200_000,
+        operating_income: -2_800_000,
+        net_income: -3_100_000,
+      },
+      provenance: {},
+    },
+    {
+      fiscal_year: 2025,
+      period_type: "FY",
+      period_end: "2025-12-31",
+      filed_at: "2026-03-01",
+      accession_number: "poci-2025",
+      form: "10-K",
+      currency: "USD",
+      values: {
+        revenue: 24_800_000,
+        gross_profit: 12_100_000,
+        operating_income: -3_200_000,
+        net_income: -3_500_000,
+      },
+      provenance: {},
+    },
+  ];
+
+  const incomeGroup = FINANCIAL_GROUPS.find((g) => g.key === "income");
+  assert.ok(incomeGroup);
+
+  const scale = getFinancialScale(pociPeriods, incomeGroup);
+  assert.equal(scale.factor, 1_000_000);
+  assert.equal(scale.unit, "M");
+  assert.equal(scale.label, "in millions");
+
+  const explorerData = buildFinancialExplorerData(pociPeriods, incomeGroup, scale.factor);
+  assert.equal(explorerData[1].revenue, 24.8);
+  assert.equal(explorerData[1].gross_profit, 12.1);
+  assert.equal(explorerData[1].operating_income, -3.2);
+  assert.equal(explorerData[1].net_income, -3.5);
+
+  // Formats correctly with M unit and no negative zero
+  assert.equal(formatScaledMoney(explorerData[1].revenue, scale.unit), "$24.8M");
+  assert.equal(formatScaledMoney(explorerData[1].gross_profit, scale.unit), "$12.1M");
+  assert.equal(formatScaledMoney(explorerData[1].operating_income, scale.unit), "-$3.2M");
+  assert.equal(formatScaledMoney(explorerData[1].net_income, scale.unit), "-$3.5M");
+  assert.equal(formatScaledMoney(0, scale.unit), "$0.0M");
+  assert.equal(formatScaledMoney(-0.000001, scale.unit), "$0.0M");
+
+  // Overview chart scaling
+  const chartData = buildFinancialChartData(pociPeriods, scale.factor);
+  assert.equal(chartData[1].revenue, 24.8);
+  assert.equal(chartData[1].operatingIncome, -3.2);
+});
+
 test("calculates the five-year PEG score using growth percentage points", () => {
   const periods = [{ fiscal_year: 2025, values: { revenue: 100_000_000_000, net_income: 20_000_000_000 } }];
   const attractive = calculatePegProjection(periods, 20, 0.2);
@@ -1586,3 +1651,45 @@ test("serves a complete AAPL analysis through the hosted API", async () => {
   assert.deepEqual(financialsPayload.data.comps, []);
   assert.ok(financialsPayload.data.analyst_estimates.annual.length > 0);
 });
+
+test("resolves logo candidates and robust fallback initials for required companies", () => {
+  const testedCompanies = [
+    { ticker: "AAPL", name: "Apple Inc.", expectedInitials: "AA", domainMatch: "apple.com" },
+    { ticker: "MSFT", name: "Microsoft Corporation", expectedInitials: "MS", domainMatch: "microsoft.com" },
+    { ticker: "TSLA", name: "Tesla, Inc.", expectedInitials: "TS", domainMatch: "tesla.com" },
+    { ticker: "MA", name: "Mastercard Incorporated", expectedInitials: "MA", domainMatch: "mastercard.com" },
+    { ticker: "DELL", name: "Dell Technologies Inc.", expectedInitials: "DE", domainMatch: "dell.com" },
+    { ticker: "SNDK", name: "Sandisk Corporation", expectedInitials: "SN", domainMatch: "sandisk.com" },
+    { ticker: "BRK.B", name: "Berkshire Hathaway Inc.", expectedInitials: "BRK", domainMatch: "berkshirehathaway.com" },
+    { ticker: "BRK.A", name: "Berkshire Hathaway Inc.", expectedInitials: "BRK", domainMatch: "berkshirehathaway.com" },
+    { ticker: "BRK-B", name: "Berkshire Hathaway Inc.", expectedInitials: "BRK", domainMatch: "berkshirehathaway.com" },
+    { ticker: "W", name: "Wayfair Inc.", expectedInitials: "W", domainMatch: "wayfair.com" },
+  ];
+
+  for (const company of testedCompanies) {
+    const candidates = getLogoCandidates(company.ticker);
+    assert.ok(candidates.length >= 2, `Expected at least 2 logo candidates for ${company.ticker}, got ${candidates.length}`);
+    assert.ok(candidates[0].includes("assets.parqet.com"), `Primary candidate for ${company.ticker} must be Parqet symbol PNG: ${candidates[0]}`);
+    assert.ok(candidates.some((url) => url.includes("financialmodelingprep.com")), `Candidates for ${company.ticker} must include FMP: ${candidates}`);
+    if (company.domainMatch) {
+      assert.ok(candidates.some((url) => url.includes(company.domainMatch)), `Candidates for ${company.ticker} must include domain fallback: ${candidates}`);
+    }
+
+    const initials = getTickerInitials(company.ticker, company.name);
+    assert.equal(initials, company.expectedInitials, `Initials for ${company.ticker} mismatch`);
+
+    const badgeStyle = getInitialsBadgeStyle(company.ticker);
+    assert.ok(badgeStyle.background.startsWith("hsl("));
+    assert.ok(badgeStyle.color.startsWith("hsl("));
+  }
+
+  // Ticker normalization
+  assert.equal(normalizeTicker("BRK.B"), "BRK-B");
+  assert.equal(normalizeTicker("brk.a"), "BRK-A");
+  assert.equal(normalizeTicker("w"), "W");
+
+  // Initials fallback when no ticker is provided
+  assert.equal(getTickerInitials("", "Tesla Motors"), "TM");
+  assert.equal(getTickerInitials("", "Wayfair"), "WA");
+});
+

@@ -22,17 +22,20 @@ import {
   financialGrowthValue,
   financialMetricValue,
   financialPeriodLabel,
+  formatScaledMoney,
+  getFinancialScale,
   latestFinancialValue,
   type FinancialGrowthMode,
   type FinancialGroupKey,
   type FinancialMetricKey,
+  type FinancialScaleUnit,
 } from "@/lib/financials";
 import type { FinancialPeriod } from "@/lib/types";
 
-function formatChartValue(value: number | string, unit: "money" | "percent") {
+function formatChartValue(value: number | string, unit: "money" | "percent", scaleUnit: FinancialScaleUnit = "B") {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return "N/A";
-  return unit === "percent" ? `${numeric.toFixed(1)}%` : `$${numeric.toFixed(1)}B`;
+  return unit === "percent" ? `${numeric.toFixed(1)}%` : formatScaledMoney(numeric, scaleUnit);
 }
 
 function formatRawValue(value: number | null, unit: "money" | "percent") {
@@ -73,15 +76,16 @@ export function FinancialExplorer({
   const periods = frequency === "quarterly" ? quarterlyPeriods : annualPeriods;
   const group = FINANCIAL_GROUPS.find((item) => item.key === groupKey) ?? FINANCIAL_GROUPS[0];
   const availableSeries = useMemo(() => availableFinancialSeries(periods, group), [periods, group]);
+  const scale = useMemo(() => getFinancialScale(periods, group), [periods, group]);
   const data = useMemo(
     () => chartMode === "values"
-      ? buildFinancialExplorerData(periods, group)
+      ? buildFinancialExplorerData(periods, group, scale.factor)
       : buildFinancialGrowthData(periods, group, chartMode),
-    [periods, group, chartMode],
+    [periods, group, chartMode, scale.factor],
   );
   const visibleSeries = availableSeries.filter((series) => !hiddenSeries.includes(series.key));
   const chartIsGrowth = chartMode !== "values";
-  const chartModeLabel = chartMode === "yoy" ? "year-over-year growth" : chartMode === "qoq" ? "quarter-over-quarter growth" : "reported values";
+  const chartModeLabel = chartMode === "yoy" ? "year-over-year growth" : chartMode === "qoq" ? "quarter-over-quarter growth" : `reported values (${scale.label})`;
 
   useEffect(() => setHiddenSeries([]), [groupKey, frequency]);
   useEffect(() => {
@@ -151,7 +155,7 @@ export function FinancialExplorer({
             <div className="financial-chart-toolbar">
               <div>
                 <strong>Chart view</strong>
-                <span>{chartIsGrowth ? (group.unit === "percent" ? "Change in percentage points" : "Percentage change") : "Reported financial values"}</span>
+                <span>{chartIsGrowth ? (group.unit === "percent" ? "Change in percentage points" : "Percentage change") : group.unit === "money" ? `Reported values (${scale.label})` : "Reported financial values"}</span>
               </div>
               <div className="chart-mode-control" role="tablist" aria-label="Financial chart view">
                 {([
@@ -189,7 +193,7 @@ export function FinancialExplorer({
                   tick={{ fill: "var(--aplex-muted)" }}
                 />
                 <YAxis
-                  tickFormatter={(value) => chartIsGrowth ? formatGrowthChartValue(value, group.unit) : formatChartValue(value, group.unit)}
+                  tickFormatter={(value) => chartIsGrowth ? formatGrowthChartValue(value, group.unit) : formatChartValue(value, group.unit, scale.unit)}
                   tickLine={false}
                   axisLine={false}
                   tick={{ fill: "var(--aplex-muted)" }}
@@ -205,7 +209,7 @@ export function FinancialExplorer({
                     boxShadow: "var(--aplex-shadow)",
                     color: "var(--aplex-ink)",
                   }}
-                  formatter={(value) => chartIsGrowth ? formatGrowthChartValue(value as number | string, group.unit) : formatChartValue(value as number | string, group.unit)}
+                  formatter={(value) => chartIsGrowth ? formatGrowthChartValue(value as number | string, group.unit) : formatChartValue(value as number | string, group.unit, scale.unit)}
                 />
                 {visibleSeries.map((series) =>
                   !chartIsGrowth && series.chart === "bar" ? (

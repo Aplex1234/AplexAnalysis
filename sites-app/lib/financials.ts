@@ -6,14 +6,19 @@ export {
   financialGrowthValue,
   financialMetricValue,
   financialPeriodLabel,
+  formatScaledMoney,
+  getFinancialScale,
   latestFinancialValue,
-} from "../../frontend/lib/financials";
+} from "../../frontend/lib/financials.ts";
 
 export type {
   FinancialGroupDefinition,
-  FinancialGrowthMode,
   FinancialGroupKey,
+  FinancialGrowthMode,
   FinancialMetricKey,
+  FinancialScale,
+  FinancialScaleUnit,
   FinancialSeriesDefinition,
   FinancialUnit,
-} from "../../frontend/lib/financials";
+} from "../../frontend/lib/financials.ts";
+

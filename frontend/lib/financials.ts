@@ -108,7 +108,69 @@ export function financialPeriodLabel(period: FinancialPeriod) {
     : `FY ${period.fiscal_year}`;
 }
 
-export function buildFinancialExplorerData(periods: FinancialPeriod[], group: FinancialGroupDefinition) {
+export type FinancialScaleUnit = "B" | "M" | "K" | "";
+
+export type FinancialScale = {
+  factor: number;
+  unit: FinancialScaleUnit;
+  label: string;
+};
+
+export function getFinancialScale(
+  periods: FinancialPeriod[],
+  group?: FinancialGroupDefinition,
+): FinancialScale {
+  let maxAbs = 0;
+  for (const period of periods) {
+    if (group) {
+      for (const series of group.series) {
+        if (!MARGIN_KEYS.has(series.key)) {
+          const val = financialMetricValue(period, series.key);
+          if (val != null && Number.isFinite(val)) {
+            maxAbs = Math.max(maxAbs, Math.abs(val));
+          }
+        }
+      }
+    } else {
+      for (const val of Object.values(period.values)) {
+        if (val != null && Number.isFinite(val)) {
+          maxAbs = Math.max(maxAbs, Math.abs(val));
+        }
+      }
+    }
+  }
+
+  if (maxAbs >= 1_000_000_000) {
+    return { factor: 1_000_000_000, unit: "B", label: "in billions" };
+  }
+  if (maxAbs >= 1_000_000) {
+    return { factor: 1_000_000, unit: "M", label: "in millions" };
+  }
+  if (maxAbs >= 1_000) {
+    return { factor: 1_000, unit: "K", label: "in thousands" };
+  }
+  return { factor: 1, unit: "", label: "in dollars" };
+}
+
+export function formatScaledMoney(
+  value: number | string | null | undefined,
+  unit: FinancialScaleUnit = "B",
+): string {
+  if (value == null) return "N/A";
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "N/A";
+  const absFormatted = Math.abs(numeric).toFixed(1);
+  const isZero = absFormatted === "0.0" || Number(absFormatted) === 0;
+  const isNegative = !isZero && numeric < 0;
+  return `${isNegative ? "-" : ""}$${absFormatted}${unit}`;
+}
+
+export function buildFinancialExplorerData(
+  periods: FinancialPeriod[],
+  group: FinancialGroupDefinition,
+  scaleFactor?: number,
+) {
+  const factor = scaleFactor ?? (group.unit === "money" ? getFinancialScale(periods, group).factor : 1);
   return periods.map((period) => {
     const point: Record<string, number | string | null> & { year: number; label: string } = {
       year: period.fiscal_year,
@@ -120,7 +182,7 @@ export function buildFinancialExplorerData(periods: FinancialPeriod[], group: Fi
         ? null
         : MARGIN_KEYS.has(series.key)
           ? rawValue * 100
-          : rawValue / 1_000_000_000;
+          : rawValue / factor;
     }
     return point;
   });

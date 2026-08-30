@@ -7,9 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "node --no-warnings --experimental-strip-types --test tests/multiple-valuation.test.mjs tests/logo.test.mjs",
+    "test": "node --no-warnings --experimental-strip-types --test tests/multiple-valuation.test.mjs tests/logo.test.mjs tests/financial-scale.test.mjs",
     "test:valuation": "node --no-warnings --experimental-strip-types --test tests/multiple-valuation.test.mjs",
     "test:logo": "node --no-warnings --experimental-strip-types --test tests/logo.test.mjs",
+    "test:financials": "node --no-warnings --experimental-strip-types --test tests/financial-scale.test.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

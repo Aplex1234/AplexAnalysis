@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "@carbon/styles/css/styles.css";
 import "./globals.css";
+import "./premium.css";
 
 export const metadata: Metadata = {
   title: "AplexAnalysis | Equity Research Terminal",

@@ -141,6 +141,9 @@ button, input { font: inherit; }
 .workspace { margin-left: 230px; padding-top: 48px; min-width: 0; }
 .company-header { min-height: 122px; display: flex; align-items: stretch; justify-content: space-between; border-bottom: 1px solid #8d8d8d; background: #fff; }
 .company-header > div:first-child { padding: 24px 32px 20px; }
+.company-identity { min-width: 0; display: flex; align-items: center; gap: 20px; }
+.company-avatar { flex: 0 0 86px; width: 86px; height: 86px; border-radius: 14px; }
+.company-overview { min-width: 0; flex: 1 1 auto; }
 .company-title-row { display: flex; align-items: center; gap: 12px; }
 .company-title-row h1 { margin: 0; font-size: 30px; line-height: 1; letter-spacing: -.04em; }
 .company-title-row > span { color: #6f6f6f; font: 11px "IBM Plex Mono", monospace; }

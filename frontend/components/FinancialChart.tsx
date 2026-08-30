@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import {
   Bar,
   CartesianGrid,
@@ -12,21 +13,22 @@ import {
   YAxis,
 } from "recharts";
 import type { FinancialPeriod } from "@/lib/types";
-import { buildFinancialChartData, formatBillions } from "@/lib/chart";
+import { buildFinancialChartData, formatScaledMoney, getFinancialScale } from "@/lib/chart";
 
 export function FinancialChart({ periods }: { periods: FinancialPeriod[] }) {
-  const data = buildFinancialChartData(periods);
+  const scale = useMemo(() => getFinancialScale(periods), [periods]);
+  const data = useMemo(() => buildFinancialChartData(periods, scale.factor), [periods, scale.factor]);
 
   return (
-    <div className="chart-frame" role="img" aria-label="Revenue, free cash flow and operating income history">
+    <div className="chart-frame" role="img" aria-label={`Revenue, free cash flow and operating income history (${scale.label})`}>
       <ResponsiveContainer width="100%" height={300}>
         <ComposedChart data={data} margin={{ top: 16, right: 8, bottom: 0, left: 0 }}>
           <CartesianGrid stroke="var(--aplex-grid)" vertical={false} />
           <XAxis dataKey="year" tickLine={false} axisLine={{ stroke: "var(--aplex-line-strong)" }} tick={{ fill: "var(--aplex-muted)" }} />
-          <YAxis yAxisId="money" tickFormatter={formatBillions} tickLine={false} axisLine={false} width={64} />
+          <YAxis yAxisId="money" tickFormatter={(val) => formatScaledMoney(val, scale.unit)} tickLine={false} axisLine={false} width={68} />
           <Tooltip
             contentStyle={{ borderRadius: 10, border: "1px solid var(--aplex-line-strong)", boxShadow: "var(--aplex-shadow)", background: "var(--aplex-panel)", color: "var(--aplex-ink)" }}
-            formatter={(value) => formatBillions(value as number | string)}
+            formatter={(value) => formatScaledMoney(value as number | string, scale.unit)}
           />
           <Legend iconType="square" />
           <Bar yAxisId="money" dataKey="revenue" name="Revenue" fill="var(--chart-1)" opacity={0.2} isAnimationActive={false} />
