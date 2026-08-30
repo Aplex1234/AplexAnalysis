@@ -22,6 +22,19 @@ interface ExecutionContext {
   passThroughOnException(): void;
 }
 
+const SECURITY_HEADERS: Record<string, string> = {
+  "Content-Security-Policy": "base-uri 'self'; object-src 'none'; frame-ancestors 'self' https://chatgpt.com https://*.chatgpt.com; form-action 'self'",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "X-Content-Type-Options": "nosniff",
+};
+
+function withSecurityHeaders(response: Response) {
+  const headers = new Headers(response.headers);
+  for (const [name, value] of Object.entries(SECURITY_HEADERS)) headers.set(name, value);
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
 // Image security config. SVG sources with .svg extension auto-skip the
 // optimization endpoint on the client side (served directly, no proxy).
 // To route SVGs through the optimizer (with security headers), set
@@ -34,13 +47,14 @@ const worker = {
 
     if (url.pathname === "/_vinext/image") {
       const allowedWidths = [...DEFAULT_DEVICE_SIZES, ...DEFAULT_IMAGE_SIZES];
-      return handleImageOptimization(request, {
+      const response = await handleImageOptimization(request, {
         fetchAsset: (path) => env.ASSETS.fetch(new Request(new URL(path, request.url))),
         transformImage: async (body, { width, format, quality }) => {
           const result = await env.IMAGES.input(body).transform(width > 0 ? { width } : {}).output({ format, quality });
           return result.response();
         },
       }, allowedWidths);
+      return withSecurityHeaders(response);
     }
 
     if (request.method === "GET" && url.pathname.startsWith("/_next/static/")) {
@@ -48,7 +62,7 @@ const worker = {
       if (response.ok) {
         const headers = new Headers(response.headers);
         headers.set("Cache-Control", "public, max-age=31536000, immutable");
-        return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+        return withSecurityHeaders(new Response(response.body, { status: response.status, statusText: response.statusText, headers }));
       }
     }
 
@@ -56,9 +70,9 @@ const worker = {
     if (request.method === "GET" && url.pathname === "/" && response.ok) {
       const headers = new Headers(response.headers);
       headers.set("Cache-Control", "public, max-age=0, s-maxage=60, stale-while-revalidate=300");
-      return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+      return withSecurityHeaders(new Response(response.body, { status: response.status, statusText: response.statusText, headers }));
     }
-    return response;
+    return withSecurityHeaders(response);
   },
   async scheduled(_controller: unknown, _env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(Promise.all([refreshDueCompanies(8), warmPopularCompanies(100, 2), pruneCacheEvents(30)]));

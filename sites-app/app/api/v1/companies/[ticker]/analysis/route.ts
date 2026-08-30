@@ -21,6 +21,7 @@ import {
 import { normalizeTicker } from "@/lib/server/security-master";
 
 const SECTION_VIEWS = new Set<AnalysisSection>(["financials", "valuation", "buyTarget", "comps", "earnings", "news", "filings", "risks", "research"]);
+const MANUAL_REFRESH_COOLDOWN_MS = 60_000;
 
 async function refreshCachedAnalysis(ticker: string, listingId: string) {
   try {
@@ -48,7 +49,13 @@ export async function GET(request: Request, context: { params: Promise<{ ticker:
     const { ticker } = await context.params;
     const normalizedTicker = normalizeTicker(ticker);
     const searchParams = new URL(request.url).searchParams;
-    const forceRefresh = searchParams.get("refresh") === "1";
+    if (searchParams.has("refresh")) {
+      return NextResponse.json(
+        { detail: "Manual refresh uses POST." },
+        { status: 405, headers: { Allow: "GET, POST", "Cache-Control": "no-store" } },
+      );
+    }
+    const forceRefresh = false;
     const requestedView = searchParams.get("view");
     const overviewOnly = requestedView === "overview";
     const requestedSection = SECTION_VIEWS.has(requestedView as AnalysisSection) ? requestedView as AnalysisSection : null;
@@ -108,6 +115,46 @@ export async function GET(request: Request, context: { params: Promise<{ ticker:
     return NextResponse.json(
       { detail: error instanceof Error ? error.message : "Analysis failed" },
       { status: 422 },
+    );
+  }
+}
+
+export async function POST(request: Request, context: { params: Promise<{ ticker: string }> }) {
+  const contentLength = Number(request.headers.get("content-length") ?? "0");
+  if (!Number.isFinite(contentLength) || contentLength > 1_024) {
+    return NextResponse.json({ detail: "Refresh request is too large." }, { status: 413 });
+  }
+
+  try {
+    const { ticker } = await context.params;
+    const normalizedTicker = normalizeTicker(ticker);
+    const searchParams = new URL(request.url).searchParams;
+    const requestedView = searchParams.get("view");
+    const overviewOnly = requestedView === "overview";
+    const requestedSection = SECTION_VIEWS.has(requestedView as AnalysisSection) ? requestedView as AnalysisSection : null;
+    const cooldownKey = `manual-refresh:${normalizedTicker}`;
+
+    if (!await acquireCacheRefreshLease(cooldownKey, MANUAL_REFRESH_COOLDOWN_MS)) {
+      return NextResponse.json(
+        { detail: "This company was refreshed recently. Please wait a minute and try again." },
+        { status: 429, headers: { "Cache-Control": "no-store", "Retry-After": "60" } },
+      );
+    }
+
+    const analysis = overviewOnly
+      ? await rebuildOverviewFromComponentCaches(normalizedTicker, true)
+      : requestedSection
+        ? await rebuildAnalysisSectionFromComponentCaches(normalizedTicker, requestedSection, true)
+        : await rebuildAnalysisFromComponentCaches(normalizedTicker);
+
+    return NextResponse.json({
+      data: analysis,
+      meta: { ticker: normalizedTicker, cache: "refresh", cached: true },
+    }, { headers: { "Cache-Control": "no-store" } });
+  } catch (error) {
+    return NextResponse.json(
+      { detail: error instanceof Error ? error.message : "Analysis refresh failed" },
+      { status: 422, headers: { "Cache-Control": "no-store" } },
     );
   }
 }

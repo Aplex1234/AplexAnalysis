@@ -337,9 +337,15 @@ test("provides a manual company refresh that bypasses the relevant component cac
   const route = await readFile(new URL("../app/api/v1/companies/[ticker]/analysis/route.ts", import.meta.url), "utf8");
   const service = await readFile(new URL("../lib/server/analysis-service.ts", import.meta.url), "utf8");
   const component = await readFile(new URL("../../frontend/components/ResearchTerminal.tsx", import.meta.url), "utf8");
+  const api = await readFile(new URL("../../frontend/lib/api.ts", import.meta.url), "utf8");
   assert.match(component, /aria-label=\{refreshing \? "Refreshing data" : "Refresh data"\}/);
   assert.doesNotMatch(component, />\{refreshing \? "Refreshing data" : "Refresh data"\}</);
   assert.match(component, /fetchAnalysis\(refreshTicker, undefined, refreshSection, true\)/);
+  assert.match(api, /method: forceRefresh \? "POST" : "GET"/);
+  assert.doesNotMatch(api, /params\.set\("refresh", "1"\)/);
+  assert.match(route, /MANUAL_REFRESH_COOLDOWN_MS = 60_000/);
+  assert.match(route, /status: 429/);
+  assert.match(route, /"Retry-After": "60"/);
   assert.match(route, /rebuildOverviewFromComponentCaches\(normalizedTicker, forceRefresh\)/);
   assert.match(route, /forceRefresh \? "no-store"/);
   assert.match(service, /loadFinancials\(ticker, forceRefresh\)/);
@@ -347,6 +353,39 @@ test("provides a manual company refresh that bypasses the relevant component cac
   assert.doesNotMatch(component, /Cached, refresh pending/);
   assert.match(component, /Refresh failed/);
   assert.match(route, /cached\.isFresh \? "cached" : "stale"/);
+});
+
+test("adds baseline response security headers without exposing cache diagnostics", async () => {
+  const worker = await readFile(new URL("../worker/index.ts", import.meta.url), "utf8");
+  const cacheStatus = await readFile(new URL("../app/api/v1/cache/status/route.ts", import.meta.url), "utf8");
+  assert.match(worker, /Content-Security-Policy/);
+  assert.match(worker, /X-Content-Type-Options/);
+  assert.match(worker, /Referrer-Policy/);
+  assert.match(worker, /Permissions-Policy/);
+  assert.match(worker, /withSecurityHeaders\(response\)/);
+  assert.match(cacheStatus, /status: 404/);
+  assert.doesNotMatch(cacheStatus, /getCacheMonitoringSummary/);
+});
+
+test("bounds and validates state-changing valuation requests", async () => {
+  const route = await readFile(new URL("../app/api/v1/companies/[ticker]/valuation/route.ts", import.meta.url), "utf8");
+  assert.match(route, /MAX_BODY_BYTES = 8_192/);
+  assert.match(route, /status: 413/);
+  assert.match(route, /request\.body\.getReader\(\)/);
+  assert.match(route, /totalBytes > MAX_BODY_BYTES/);
+  assert.match(route, /Object\.keys\(input\).*allowed\.has/);
+  assert.match(route, /Number\.isFinite/);
+  assert.match(route, /normalizeTicker\(ticker\)/);
+});
+
+test("keeps server and browser freshness labels deterministic and the brand link usable", async () => {
+  const component = await readFile(new URL("../../frontend/components/ResearchTerminal.tsx", import.meta.url), "utf8");
+  const notFound = await readFile(new URL("../app/not-found.tsx", import.meta.url), "utf8");
+  assert.match(component, /timeZone: "UTC"/);
+  assert.match(component, /aria-label="Go to AplexAnalysis overview"/);
+  assert.match(component, /onClick=\{\(\) => openCompanyProfile\("AAPL"\)\}/);
+  assert.match(notFound, /404 \/ PAGE NOT FOUND/);
+  assert.match(notFound, /href="\/"/);
 });
 
 test("keeps excluded Overview sections explicitly unavailable", () => {
@@ -1692,4 +1731,3 @@ test("resolves logo candidates and robust fallback initials for required compani
   assert.equal(getTickerInitials("", "Tesla Motors"), "TM");
   assert.equal(getTickerInitials("", "Wayfair"), "WA");
 });
-

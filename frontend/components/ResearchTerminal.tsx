@@ -322,9 +322,9 @@ export function ResearchTerminal({ initialAnalysis = null }: { initialAnalysis?:
     <Theme theme={theme === "dark" ? "g100" : "white"}>
     <div className="terminal-shell" data-theme={theme}>
       <header className="topbar">
-        <div className="brand-lockup" aria-label="AplexAnalysis home">
+        <button type="button" className="brand-lockup" aria-label="Go to AplexAnalysis overview" onClick={() => openCompanyProfile("AAPL")}>
           <span className="brand-name"><strong>Aplex</strong>Analysis</span>
-        </div>
+        </button>
         <div className="search-module">
           <label htmlFor="ticker-search">Search public companies</label>
           <form className="ticker-search" onSubmit={submitTicker}>
@@ -530,8 +530,8 @@ function freshnessTime(value: string | null | undefined, dateOnly = false) {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
   return parsed.toLocaleString("en-US", dateOnly
-    ? { month: "short", day: "numeric", year: "numeric" }
-    : { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    ? { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }
+    : { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "UTC", timeZoneName: "short" });
 }
 
 function freshnessDisplay(item: NonNullable<Analysis["freshness"]>["financials"], dateOnly = false) {

@@ -15,9 +15,9 @@ async function parseResponse(response: Response): Promise<Analysis> {
 async function requestAnalysis(ticker: string, signal: AbortSignal | undefined, scope: AnalysisSection | "full", forceRefresh = false) {
   const params = new URLSearchParams();
   if (scope !== "full") params.set("view", scope);
-  if (forceRefresh) params.set("refresh", "1");
   const query = params.size ? `?${params}` : "";
   const response = await fetch(`${API_URL}/companies/${encodeURIComponent(ticker)}/analysis${query}`, {
+    method: forceRefresh ? "POST" : "GET",
     signal,
     cache: forceRefresh ? "no-store" : undefined,
   });

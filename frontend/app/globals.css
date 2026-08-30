@@ -48,7 +48,14 @@ button, input { font: inherit; }
   border-bottom: 1px solid #393939;
 }
 
-.brand-lockup { display: flex; align-items: center; height: 48px; gap: 10px; padding: 0 16px; font-weight: 600; letter-spacing: -.01em; }
+.brand-lockup { display: flex; align-items: center; height: 48px; gap: 10px; padding: 0 16px; border: 0; background: transparent; color: inherit; font: inherit; font-weight: 600; letter-spacing: -.01em; cursor: pointer; text-align: left; }
+.brand-lockup:focus-visible { outline: 2px solid var(--aplex-mint); outline-offset: -4px; }
+.not-found-page { min-height: 100vh; display: grid; align-content: center; justify-items: start; gap: 18px; max-width: 760px; margin: 0 auto; padding: 48px 24px; }
+.not-found-page h1 { margin: 0; font-size: clamp(2.25rem, 7vw, 5.5rem); line-height: .95; letter-spacing: -.05em; }
+.not-found-page p { max-width: 620px; margin: 0; color: var(--aplex-muted); line-height: 1.65; }
+.not-found-link { display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; background: var(--aplex-mint); color: #04140f; font-weight: 600; text-decoration: none; }
+.not-found-link:hover { filter: brightness(1.08); }
+.not-found-link:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
 .brand-mark { display: grid; place-items: center; width: 24px; height: 24px; background: var(--aplex-blue); color: #fff; font-weight: 700; }
 .brand-mode { color: #8d8d8d; font: 10px "IBM Plex Mono", monospace; letter-spacing: .1em; }
 .ticker-search { height: 48px; display: grid; grid-template-columns: 1fr auto; border-left: 1px solid #393939; border-right: 1px solid #393939; }
