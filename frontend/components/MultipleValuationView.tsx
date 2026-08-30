@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Button } from "@carbon/react";
-import { Renew } from "@carbon/icons-react";
+import { Button } from "./AplexPrimitives";
+import Renew from "@carbon/icons-react/es/Renew.js";
 import {
   CartesianGrid,
   Line,

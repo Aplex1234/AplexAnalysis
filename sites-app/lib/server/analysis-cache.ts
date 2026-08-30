@@ -26,6 +26,8 @@ export const CACHE_TTLS = {
 } as const;
 
 const REFRESH_LEASE_MS = 2 * 60 * 1000;
+const HOT_ANALYSIS_TTL_MS = 30 * 1000;
+const HOT_ANALYSIS_MAX_ENTRIES = 64;
 
 type D1Result = { success?: boolean; meta?: { changes?: number } };
 type D1PreparedStatement = {
@@ -287,6 +289,37 @@ export type CachedAnalysis = {
   isFresh: boolean;
 };
 
+type HotAnalysisEntry = {
+  cached: CachedAnalysis;
+  expiresAt: number;
+};
+
+const hotAnalysisCache = new Map<string, HotAnalysisEntry>();
+
+export function readHotAnalysisCache(ticker: string, now = Date.now()): CachedAnalysis | null {
+  const key = ticker.trim().toUpperCase();
+  const entry = hotAnalysisCache.get(key);
+  if (!entry) return null;
+  if (entry.expiresAt <= now) {
+    hotAnalysisCache.delete(key);
+    return null;
+  }
+  hotAnalysisCache.delete(key);
+  hotAnalysisCache.set(key, entry);
+  return { ...entry.cached, isFresh: Date.parse(entry.cached.freshUntil) > now };
+}
+
+export function writeHotAnalysisCache(ticker: string, cached: CachedAnalysis, now = Date.now()) {
+  const key = ticker.trim().toUpperCase();
+  hotAnalysisCache.delete(key);
+  hotAnalysisCache.set(key, { cached, expiresAt: now + HOT_ANALYSIS_TTL_MS });
+  while (hotAnalysisCache.size > HOT_ANALYSIS_MAX_ENTRIES) {
+    const oldestKey = hotAnalysisCache.keys().next().value as string | undefined;
+    if (!oldestKey) break;
+    hotAnalysisCache.delete(oldestKey);
+  }
+}
+
 export function parseCachedAnalysisRow(row: CacheRow, now = Date.now()): CachedAnalysis | null {
   try {
     const analysis = JSON.parse(row.payload_json) as Analysis;
@@ -319,9 +352,11 @@ export function isAnalysisCacheCompatible(row: Pick<CacheRow, "schema_version" |
 
 export async function readCachedAnalysis(ticker: string): Promise<CachedAnalysis | null> {
   const startedAt = Date.now();
+  const normalizedTicker = ticker.trim().toUpperCase();
+  const hot = readHotAnalysisCache(normalizedTicker, startedAt);
+  if (hot) return hot;
   const db = await getCacheDatabase();
   if (!db) return null;
-  const normalizedTicker = ticker.trim().toUpperCase();
   const row = await db.prepare(`
     SELECT ac.listing_id, ac.payload_json, ac.schema_version, ac.normalization_version,
       ac.valuation_model_version, ac.score_model_version, ac.component_source_versions_json, ac.generated_at,
@@ -339,6 +374,7 @@ export async function readCachedAnalysis(ticker: string): Promise<CachedAnalysis
     return null;
   }
   const cached = parseCachedAnalysisRow(row);
+  if (cached) writeHotAnalysisCache(normalizedTicker, cached);
   await recordEvent(db, {
     listingId: row.listing_id,
     ticker: normalizedTicker,
@@ -379,6 +415,13 @@ export async function writeAnalysisSnapshot(analysis: Analysis, now = new Date()
     VALUATION_MODEL_VERSION, SCORE_MODEL_VERSION, JSON.stringify(COMPONENT_SOURCE_VERSIONS), generatedAt, freshUntil,
     timestamp, jsonBytes, timestamp,
   ).run();
+  writeHotAnalysisCache(identity.ticker, {
+    analysis,
+    listingId: identity.listingId,
+    generatedAt,
+    freshUntil,
+    isFresh: true,
+  }, now.getTime());
   await recordEvent(db, { listingId: identity.listingId, ticker: identity.ticker, component: "analysis", outcome: "refresh_success", durationMs: Date.now() - startedAt, jsonBytes });
   return identity;
 }
@@ -731,7 +774,7 @@ export async function recordCompanyView(ticker: string, listingId: string, now =
 }
 
 export async function recordCompanyViewInBackground(ticker: string, listingId: string, now = new Date()) {
-  const task = recordCompanyView(ticker, listingId, now);
+  const task = recordCompanyView(ticker, listingId, now).catch(() => undefined);
   if (!await scheduleBackgroundRefresh(task)) await task;
 }
 

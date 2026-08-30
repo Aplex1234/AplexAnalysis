@@ -1,32 +1,23 @@
 "use client";
 
 import { FormEvent, Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
-import {
-  Button,
-  InlineNotification,
-  SkeletonText,
-  Tag,
-  TextInput,
-  Theme,
-} from "@carbon/react";
-import {
-  ArrowRight,
-  Calculator,
-  ChartLineData,
-  Chat,
-  Compare,
-  Dashboard,
-  Document,
-  Information,
-  Moon,
-  Purchase,
-  Renew,
-  Report,
-  Rss,
-  Search,
-  Sun,
-  WarningAlt,
-} from "@carbon/icons-react";
+import { Button, InlineNotification, SkeletonText, Tag, TextInput, Theme } from "./AplexPrimitives";
+import ArrowRight from "@carbon/icons-react/es/ArrowRight.js";
+import Calculator from "@carbon/icons-react/es/Calculator.js";
+import ChartLineData from "@carbon/icons-react/es/ChartLineData.js";
+import Chat from "@carbon/icons-react/es/Chat.js";
+import Compare from "@carbon/icons-react/es/Compare.js";
+import Dashboard from "@carbon/icons-react/es/Dashboard.js";
+import Document from "@carbon/icons-react/es/Document.js";
+import Information from "@carbon/icons-react/es/Information.js";
+import Moon from "@carbon/icons-react/es/Moon.js";
+import Purchase from "@carbon/icons-react/es/Purchase.js";
+import Renew from "@carbon/icons-react/es/Renew.js";
+import Report from "@carbon/icons-react/es/Report.js";
+import Rss from "@carbon/icons-react/es/Rss.js";
+import Search from "@carbon/icons-react/es/Search.js";
+import Sun from "@carbon/icons-react/es/Sun.js";
+import WarningAlt from "@carbon/icons-react/es/WarningAlt.js";
 import type { ComponentType } from "react";
 
 import { fetchAnalysis, prefetchAnalysis, searchSecurities } from "@/lib/api";

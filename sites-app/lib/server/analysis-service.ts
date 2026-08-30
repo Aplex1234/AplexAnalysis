@@ -542,7 +542,7 @@ export async function rebuildOverviewFromComponentCaches(rawTicker: string, forc
     news: freshness("unavailable", null, null, "Loads with News"),
     risks: freshness("unavailable", null, null, "Loads with Risks"),
   });
-  if (financials.cache?.listingId) await recordCompanyViewInBackground(ticker, financials.cache.listingId);
+  if (financials.cache?.listingId) void recordCompanyViewInBackground(ticker, financials.cache.listingId);
   return buildOverviewSnapshot(enriched);
 }
 

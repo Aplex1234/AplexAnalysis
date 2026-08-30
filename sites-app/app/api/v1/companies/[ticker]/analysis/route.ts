@@ -68,9 +68,9 @@ export async function GET(request: Request, context: { params: Promise<{ ticker:
         refreshing = await scheduleBackgroundRefresh(refreshCachedAnalysis(normalizedTicker, cached.listingId));
         if (!refreshing) await recordRefreshFailure(cached.listingId, "Background refresh is unavailable in this runtime");
       }
-      await recordCompanyViewInBackground(normalizedTicker, cached.listingId);
+      void recordCompanyViewInBackground(normalizedTicker, cached.listingId);
       if (cached.isFresh) {
-        await scheduleBackgroundRefresh(refreshDueCompanies(1, normalizedTicker));
+        void scheduleBackgroundRefresh(refreshDueCompanies(1, normalizedTicker));
       }
       const analysis = markSnapshotFreshness(cached.analysis, cached.isFresh ? "cached" : "stale");
       const etag = `W/"analysis-${normalizedTicker}-${responseScope}-${cached.generatedAt}-${cached.isFresh ? "fresh" : "stale"}"`;
@@ -97,7 +97,7 @@ export async function GET(request: Request, context: { params: Promise<{ ticker:
       : requestedSection
         ? await rebuildAnalysisSectionFromComponentCaches(normalizedTicker, requestedSection, forceRefresh)
         : await rebuildAnalysisFromComponentCaches(normalizedTicker);
-    if (overviewOnly) await scheduleBackgroundRefresh(warmFullAnalysis(normalizedTicker));
+    if (overviewOnly) void scheduleBackgroundRefresh(warmFullAnalysis(normalizedTicker));
     const persisted = await readCachedAnalysis(normalizedTicker);
     const generatedAt = analysis.provenance.generated_at;
     const etag = `W/"analysis-${normalizedTicker}-${responseScope}-${generatedAt}-live"`;

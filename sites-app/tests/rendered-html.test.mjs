@@ -11,7 +11,7 @@ import { normalizeCompanyFacts, normalizeQuarterlyCompanyFacts } from "../lib/se
 import { calculatePegProjection } from "../lib/server/peg.ts";
 import { extractRiskFactorHeadings, extractRiskFactorThemes } from "../lib/server/risk-factors.ts";
 import { summarizeCompanyDescription } from "../lib/server/company-description.ts";
-import { cacheIdentity, hasSameFinancialFingerprint, isAnalysisCacheCompatible, parseCachedAnalysisRow } from "../lib/server/analysis-cache.ts";
+import { cacheIdentity, hasSameFinancialFingerprint, isAnalysisCacheCompatible, parseCachedAnalysisRow, readHotAnalysisCache, writeHotAnalysisCache } from "../lib/server/analysis-cache.ts";
 import { buildAnalysis, fetchCompanyRisks } from "../lib/server/analysis.ts";
 import { buildOverviewSnapshot, buildSectionSnapshot } from "../lib/server/analysis-service.ts";
 import { ANALYSIS_SCHEMA_VERSION, COMPONENT_SOURCE_VERSIONS, NORMALIZATION_VERSION, SCORE_MODEL_VERSION, VALUATION_MODEL_VERSION } from "../lib/server/model-versions.ts";
@@ -42,7 +42,27 @@ test("keeps the initial terminal and stylesheet within performance budgets", asy
   const terminalSize = (await stat(new URL(terminalChunk, chunkDirectory))).size;
   const cssSizes = await Promise.all(stylesheets.filter((file) => file.endsWith(".css")).map(async (file) => (await stat(new URL(file, cssDirectory))).size));
   assert.ok(terminalSize < 100 * 1024, `ResearchTerminal exceeded 100 KB: ${terminalSize}`);
-  assert.ok(Math.max(...cssSizes) < 400 * 1024, `Stylesheet exceeded 400 KB: ${Math.max(...cssSizes)}`);
+  assert.ok(Math.max(...cssSizes) < 250 * 1024, `Stylesheet exceeded 250 KB: ${Math.max(...cssSizes)}`);
+  const terminalSource = await readFile(new URL("../../frontend/components/ResearchTerminal.tsx", import.meta.url), "utf8");
+  const newsSource = await readFile(new URL("../../frontend/components/NewsView.tsx", import.meta.url), "utf8");
+  const valuationSource = await readFile(new URL("../../frontend/components/MultipleValuationView.tsx", import.meta.url), "utf8");
+  const carbonStyles = await readFile(new URL("../app/carbon.scss", import.meta.url), "utf8");
+  assert.doesNotMatch(`${terminalSource}\n${newsSource}\n${valuationSource}`, /from "@carbon\/icons-react"/);
+  assert.doesNotMatch(carbonStyles, /@use "@carbon\/styles\/scss\/components\/notification";/);
+});
+
+test("serves repeat analysis reads from a bounded short-lived hot cache", () => {
+  const now = Date.parse("2026-08-30T00:00:00.000Z");
+  const cached = {
+    analysis: { company: { ticker: "PERF" }, financials: [] },
+    listingId: "listing:NASDAQ:PERF",
+    generatedAt: "2026-08-30T00:00:00.000Z",
+    freshUntil: "2026-08-30T00:05:00.000Z",
+    isFresh: true,
+  };
+  writeHotAnalysisCache("perf", cached, now);
+  assert.equal(readHotAnalysisCache("PERF", now + 1)?.listingId, cached.listingId);
+  assert.equal(readHotAnalysisCache("PERF", now + 30_001), null);
 });
 
 test("keeps valuation outputs per-share when SEC share counts are unavailable", async () => {

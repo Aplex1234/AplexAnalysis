@@ -1,8 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Button } from "@carbon/react";
-import { Launch, Renew, Rss } from "@carbon/icons-react";
+import { Button } from "./AplexPrimitives";
+import Launch from "@carbon/icons-react/es/Launch.js";
+import Renew from "@carbon/icons-react/es/Renew.js";
+import Rss from "@carbon/icons-react/es/Rss.js";
 
 import type { Analysis, NewsItem } from "@/lib/types";
 import { CompanyLogo } from "./CompanyLogo";
