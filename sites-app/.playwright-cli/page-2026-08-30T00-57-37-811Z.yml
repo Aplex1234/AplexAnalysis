@@ -1,0 +1,31 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - button "Go to AplexAnalysis overview" [ref=e5] [cursor=pointer]:
+      - generic [ref=e6]:
+        - strong [ref=e7]: Aplex
+        - text: Analysis
+    - generic [ref=e8]:
+      - generic [ref=e9]: Search public companies
+      - generic [ref=e10]:
+        - combobox "Search public companies" [ref=e12]: AAPL
+        - button "Analyze" [ref=e14] [cursor=pointer]
+    - generic [ref=e18]:
+      - generic [ref=e19]:
+        - generic [ref=e20]: Coverage
+        - strong [ref=e21]: SEC + public news
+      - button "Switch to light mode" [ref=e22] [cursor=pointer]
+  - complementary "Research sections" [ref=e33]:
+    - navigation [ref=e34]:
+      - button "Overview" [ref=e35] [cursor=pointer]
+      - button "Financials" [ref=e42] [cursor=pointer]
+      - button "Valuation" [ref=e46] [cursor=pointer]
+      - button "Buy Target" [ref=e60] [cursor=pointer]
+      - button "Comps" [ref=e65] [cursor=pointer]
+      - button "Earnings" [ref=e69] [cursor=pointer]
+      - button "News" [ref=e76] [cursor=pointer]
+      - button "Filings" [ref=e82] [cursor=pointer]
+      - button "Risks" [ref=e88] [cursor=pointer]
+      - button "AI Research · Preview" [ref=e94] [cursor=pointer]
+    - generic [ref=e100]: Research software. Not investment advice.
+  - main [ref=e106]:
+    - paragraph [ref=e111]: Retrieving and normalizing AAPL filings

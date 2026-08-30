@@ -1,0 +1,290 @@
+- generic [ref=e1]:
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - button "Go to AplexAnalysis overview" [active] [ref=e5] [cursor=pointer]:
+        - generic [ref=e6]:
+          - strong [ref=e7]: Aplex
+          - text: Analysis
+      - generic [ref=e8]:
+        - generic [ref=e9]: Search public companies
+        - generic [ref=e10]:
+          - generic [ref=e12]:
+            - generic: Ticker or company
+            - generic [ref=e15]:
+              - combobox "Search public companies Ticker or company" [ref=e16]: AAPL
+              - alert [ref=e17]
+          - button "Analyze" [ref=e19] [cursor=pointer]
+      - button "Switch to light mode" [ref=e23] [cursor=pointer]
+    - complementary "Research sections" [ref=e34]:
+      - navigation [ref=e35]:
+        - button "Overview" [ref=e36] [cursor=pointer]
+        - button "Financials" [ref=e43] [cursor=pointer]
+        - button "Valuation" [ref=e47] [cursor=pointer]
+        - button "Buy Target" [ref=e61] [cursor=pointer]
+        - button "Comps" [ref=e66] [cursor=pointer]
+        - button "Earnings" [ref=e70] [cursor=pointer]
+        - button "News" [ref=e77] [cursor=pointer]
+        - button "Filings" [ref=e83] [cursor=pointer]
+        - button "Risks" [ref=e89] [cursor=pointer]
+        - button "AI Research · Preview" [ref=e95] [cursor=pointer]
+      - generic [ref=e101]: Swipe sideways for more sections
+    - main [ref=e102]:
+      - generic [ref=e103]:
+        - generic [ref=e104]:
+          - img "Apple Inc. logo" [ref=e106]
+          - generic [ref=e107]:
+            - generic [ref=e108]:
+              - heading "Apple Inc." [level=1] [ref=e109]
+              - generic [ref=e110]: AAPL
+              - generic "Fresh" [ref=e2065]
+              - button "Refresh data" [ref=e113] [cursor=pointer]
+            - paragraph [ref=e118]: Nasdaq / Technology / Computer Manufacturing
+            - generic [ref=e119]:
+              - strong [ref=e120]: $319.70
+              - generic [ref=e121]: Delayed market price
+            - generic [ref=e122]:
+              - text: As of Aug 27, 2026 via
+              - link "Nasdaq delayed quote" [ref=e123] [cursor=pointer]:
+                - /url: https://www.nasdaq.com/market-activity/stocks/aapl
+        - generic "Company market snapshot" [ref=e124]:
+          - generic [ref=e125]:
+            - generic [ref=e126]: Market cap
+            - strong [ref=e127]: $4.7T
+          - generic [ref=e128]:
+            - generic [ref=e129]: P / E
+            - strong [ref=e130]: 41.7x
+          - generic [ref=e131]:
+            - generic [ref=e132]: PEG
+            - strong [ref=e133]: "5.50"
+          - generic [ref=e134]:
+            - generic [ref=e135]: Price / book
+            - strong [ref=e136]: 63.3x
+        - generic "Data freshness" [ref=e137]:
+          - generic [ref=e138]:
+            - generic [ref=e139]: Financial filing
+            - strong [ref=e140]: Jul 31, 2026
+            - generic [ref=e141]: cached
+          - generic [ref=e142]:
+            - generic [ref=e143]: Quote updated
+            - strong [ref=e144]: Aug 27, 7:00 AM UTC
+            - generic [ref=e145]: cached
+          - generic [ref=e146]:
+            - generic [ref=e147]: Estimates updated
+            - strong [ref=e148]: Unavailable
+            - generic [ref=e149]: unavailable
+          - generic [ref=e150]:
+            - generic [ref=e151]: Comparable set
+            - strong [ref=e152]: Unavailable
+            - generic [ref=e153]: unavailable
+      - generic [ref=e2523]:
+        - generic [ref=e2524]:
+          - generic [ref=e2525]:
+            - generic [ref=e2526]:
+              - generic [ref=e2527]:
+                - text: MARKET PERFORMANCE
+                - heading "AAPL price history" [level=3] [ref=e2528]
+                - paragraph [ref=e2529]: Nasdaq delayed historical prices, through Aug 28, 2026
+              - generic "Price chart range" [ref=e2530]:
+                - button "1D" [ref=e2531] [cursor=pointer]
+                - button "1W" [ref=e2532] [cursor=pointer]
+                - button "1M" [ref=e2533] [cursor=pointer]
+                - button "3M" [ref=e2534] [cursor=pointer]
+                - button "6M" [ref=e2535] [cursor=pointer]
+                - button "1Y" [pressed] [ref=e2536] [cursor=pointer]
+                - button "5Y" [ref=e2537] [cursor=pointer]
+                - button "Max" [ref=e2538] [cursor=pointer]
+            - generic [ref=e2539]:
+              - generic [ref=e2540]:
+                - generic [ref=e2541]: LAST CLOSE
+                - strong [ref=e2542]: $319.70
+              - generic [ref=e2543]:
+                - generic [ref=e2544]: PERIOD CHANGE
+                - strong [ref=e2545]: +$87.14 (37.5%)
+              - generic [ref=e2546]:
+                - generic [ref=e2547]: PERIOD HIGH
+                - strong [ref=e2548]: $344.57
+              - generic [ref=e2549]:
+                - generic [ref=e2550]: PERIOD LOW
+                - strong [ref=e2551]: $225.95
+            - img "AAPL price chart for the selected 1y range" [ref=e2552]:
+              - application [ref=e2555]:
+                - generic [ref=e3325]:
+                  - generic [ref=e3326]:
+                    - generic [ref=e3327]: Sep 18
+                    - generic [ref=e3329]: Jan 9
+                    - generic [ref=e3331]: May 1
+                    - generic [ref=e3333]: Aug 28
+                  - generic [ref=e3335]:
+                    - generic [ref=e3336]: $210
+                    - generic [ref=e3338]: $245
+                    - generic [ref=e3340]: $280
+                    - generic [ref=e3342]: $315
+                    - generic [ref=e3344]: $350
+            - generic [ref=e3346]:
+              - generic [ref=e3347]: Daily closing prices
+              - link "View price source" [ref=e3348] [cursor=pointer]:
+                - /url: https://www.nasdaq.com/market-activity/stocks/aapl/historical
+          - complementary [ref=e3349]:
+            - generic [ref=e3350]:
+              - generic [ref=e3351]:
+                - text: APLEX SCORE
+                - strong [ref=e3352]: 55/100
+              - generic "Neutral" [ref=e3354]
+            - paragraph [ref=e3355]: Weighted across valuation, quality, growth, balance-sheet strength, allocation, earnings, momentum and risk.
+            - generic [ref=e3356]:
+              - generic [ref=e3357]:
+                - generic [ref=e3358]:
+                  - text: Fair value
+                  - generic [ref=e3359]: "-35.8% from market"
+                - strong [ref=e3360]: $205.21
+              - generic [ref=e3361]:
+                - generic [ref=e3362]:
+                  - text: Buy target
+                  - generic [ref=e3363]: 11.5% safety margin
+                - strong [ref=e3364]: $181.67
+              - generic [ref=e3365]:
+                - generic [ref=e3366]: Bear case
+                - strong [ref=e3367]: $72.14
+              - generic [ref=e3368]:
+                - generic [ref=e3369]: Bull case
+                - strong [ref=e3370]: $219.12
+            - generic [ref=e3371]:
+              - generic [ref=e3372]: Forward PEG
+              - strong [ref=e3373]: "5.50"
+              - generic [ref=e3374]: "Target: 1.2 or lower"
+        - generic [ref=e3375]:
+          - generic [ref=e3376]:
+            - heading "Key highlights" [level=3] [ref=e3377]
+            - generic [ref=e3378]: Latest annual filing and current delayed price
+          - generic [ref=e3379]:
+            - generic [ref=e3380]:
+              - generic [ref=e3381]: Revenue
+              - strong [ref=e3382]: $416.2B
+              - generic [ref=e3383]: 6.4% annual growth
+            - generic [ref=e3384]:
+              - generic [ref=e3385]: Net income
+              - strong [ref=e3386]: $112B
+              - generic [ref=e3387]: 19.5% annual growth
+            - generic [ref=e3388]:
+              - generic [ref=e3389]: Free cash flow
+              - strong [ref=e3390]: $98.8B
+              - generic [ref=e3391]: "-9.2% annual growth"
+            - generic [ref=e3392]:
+              - generic [ref=e3393]: P / E
+              - strong [ref=e3394]: 41.7x
+              - generic [ref=e3395]: Current price / annual EPS
+            - generic [ref=e3396]:
+              - generic [ref=e3397]: Price / book
+              - strong [ref=e3398]: 63.3x
+              - generic [ref=e3399]: Market cap / book equity
+        - region [ref=e3400]:
+          - generic [ref=e3406]:
+            - heading "What the company does" [level=3] [ref=e3407]
+            - text: Technology
+          - generic [ref=e3408]:
+            - paragraph [ref=e3409]: Apple designs, manufactures and markets smartphones, computers, tablets, wearables and related services.
+            - 'link "Source: Bundled company profile" [ref=e3410] [cursor=pointer]':
+              - /url: https://www.sec.gov/edgar/browse/?CIK=0000320193&owner=exclude
+        - generic [ref=e3411]:
+          - generic [ref=e3412]:
+            - heading "Financial trajectory" [level=3] [ref=e3413]
+            - paragraph [ref=e3414]: Annual SEC Company Facts, normalized to fiscal years
+          - img "Revenue, free cash flow and operating income history (in billions)" [ref=e3415]:
+            - generic [ref=e3417]:
+              - list [ref=e3419]:
+                - listitem [ref=e3420]:
+                  - img "Free cash flow legend icon" [ref=e3421]
+                  - text: Free cash flow
+                - listitem [ref=e3423]:
+                  - img "Operating income legend icon" [ref=e3424]
+                  - text: Operating income
+                - listitem [ref=e3426]:
+                  - img "Revenue legend icon" [ref=e3427]
+                  - text: Revenue
+              - application [ref=e3429]:
+                - generic [ref=e3486]:
+                  - generic [ref=e3487]:
+                    - generic [ref=e3488]: "2017"
+                    - generic [ref=e3490]: "2019"
+                    - generic [ref=e3492]: "2021"
+                    - generic [ref=e3494]: "2023"
+                    - generic [ref=e3496]: "2025"
+                  - generic [ref=e3498]:
+                    - generic [ref=e3499]: $0.0B
+                    - generic [ref=e3501]: $150.0B
+                    - generic [ref=e3503]: $300.0B
+                    - generic [ref=e3505]: $450.0B
+                    - generic [ref=e3507]: $600.0B
+        - generic [ref=e3509]:
+          - generic [ref=e3510]:
+            - generic [ref=e3511]:
+              - heading "Key metrics" [level=3] [ref=e3512]
+              - paragraph [ref=e3513]: "Latest fiscal year: 2025"
+            - generic [ref=e3514]:
+              - generic [ref=e3515]:
+                - generic [ref=e3516]: Revenue
+                - strong [ref=e3517]: $416.2B
+              - generic [ref=e3518]:
+                - generic [ref=e3519]: Revenue CAGR
+                - strong [ref=e3520]: 7.6%
+              - generic [ref=e3521]:
+                - generic [ref=e3522]: Operating margin
+                - strong [ref=e3523]: 32.0%
+              - generic [ref=e3524]:
+                - generic [ref=e3525]: Free cash flow
+                - strong [ref=e3526]: $98.8B
+              - generic [ref=e3527]:
+                - generic [ref=e3528]: FCF margin
+                - strong [ref=e3529]: 23.7%
+              - generic [ref=e3530]:
+                - generic [ref=e3531]: ROIC
+                - strong [ref=e3532]: 95.8%
+              - generic [ref=e3533]:
+                - generic [ref=e3534]: Net debt
+                - strong [ref=e3535]: $36B
+              - generic [ref=e3536]:
+                - generic [ref=e3537]: P / FCF
+                - strong [ref=e3538]: 47.2x
+          - generic [ref=e3539]:
+            - generic [ref=e3540]:
+              - heading "Score anatomy" [level=3] [ref=e3541]
+              - paragraph [ref=e3542]: Metric-derived, no LLM judgment
+            - generic [ref=e3543]:
+              - generic [ref=e3544]:
+                - generic [ref=e3545]: Valuation
+                - strong [ref=e3546]: "22"
+                - generic [ref=e3547]: 30% weight
+              - generic [ref=e3548]:
+                - generic [ref=e3549]: Quality
+                - strong [ref=e3550]: "87"
+                - generic [ref=e3551]: 20% weight
+              - generic [ref=e3552]:
+                - generic [ref=e3553]: Growth
+                - strong [ref=e3554]: "40"
+                - generic [ref=e3555]: 15% weight
+              - generic [ref=e3556]:
+                - generic [ref=e3557]: Financial Strength
+                - strong [ref=e3558]: "81"
+                - generic [ref=e3559]: 10% weight
+              - generic [ref=e3560]:
+                - generic [ref=e3561]: Capital Allocation
+                - strong [ref=e3562]: "62"
+                - generic [ref=e3563]: 10% weight
+              - generic [ref=e3564]:
+                - generic [ref=e3565]: Earnings Quality
+                - strong [ref=e3566]: "85"
+                - generic [ref=e3567]: 5% weight
+              - generic [ref=e3568]:
+                - generic [ref=e3569]: Momentum
+                - strong [ref=e3570]: "37"
+                - generic [ref=e3571]: 5% weight
+              - generic [ref=e3572]:
+                - generic [ref=e3573]: Risk
+                - strong [ref=e3574]: "84"
+                - generic [ref=e3575]: 5% weight
+        - generic [ref=e3576]:
+          - generic [ref=e3577]:
+            - text: MODEL READ
+            - heading "Neutral at $319.70" [level=3] [ref=e3578]
+          - paragraph [ref=e3579]: The market price implies approximately 30.5% annual revenue growth over the explicit forecast period. 55% DCF, 20% peer P/E, 15% growth-adjusted P/E, 10% normalized P/E
+  - generic [ref=e1231]: "10"

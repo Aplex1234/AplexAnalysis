@@ -1,0 +1,447 @@
+- generic [ref=e1]:
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - button "Go to AplexAnalysis overview" [ref=e5] [cursor=pointer]:
+        - generic [ref=e6]:
+          - strong [ref=e7]: Aplex
+          - text: Analysis
+      - generic [ref=e8]:
+        - generic [ref=e9]: Search public companies
+        - generic [ref=e10]:
+          - generic [ref=e12]:
+            - generic: Ticker or company
+            - generic [ref=e15]:
+              - combobox "Search public companies Ticker or company" [ref=e16]: AAPL
+              - alert [ref=e17]
+          - button "Analyze" [ref=e19] [cursor=pointer]
+      - button "Switch to light mode" [ref=e23] [cursor=pointer]
+    - complementary "Research sections" [ref=e34]:
+      - navigation [ref=e35]:
+        - button "Overview" [ref=e36] [cursor=pointer]
+        - button "Financials" [ref=e43] [cursor=pointer]
+        - button "Valuation" [active] [ref=e47] [cursor=pointer]
+        - button "Buy Target" [ref=e61] [cursor=pointer]
+        - button "Comps" [ref=e66] [cursor=pointer]
+        - button "Earnings" [ref=e70] [cursor=pointer]
+        - button "News" [ref=e77] [cursor=pointer]
+        - button "Filings" [ref=e83] [cursor=pointer]
+        - button "Risks" [ref=e89] [cursor=pointer]
+        - button "AI Research · Preview" [ref=e95] [cursor=pointer]
+      - generic [ref=e101]: Swipe sideways for more sections
+    - main [ref=e102]:
+      - generic [ref=e103]:
+        - generic [ref=e104]:
+          - img "Apple Inc. logo" [ref=e106]
+          - generic [ref=e107]:
+            - generic [ref=e108]:
+              - heading "Apple Inc." [level=1] [ref=e109]
+              - generic [ref=e110]: AAPL
+              - generic "Fresh" [ref=e2065]
+              - button "Refresh data" [ref=e113] [cursor=pointer]
+            - paragraph [ref=e118]: Nasdaq / Technology / Computer Manufacturing
+            - generic [ref=e119]:
+              - strong [ref=e120]: $319.70
+              - generic [ref=e121]: Delayed market price
+            - generic [ref=e122]:
+              - text: As of Aug 27, 2026 via
+              - link "Nasdaq delayed quote" [ref=e123] [cursor=pointer]:
+                - /url: https://www.nasdaq.com/market-activity/stocks/aapl
+        - generic "Company market snapshot" [ref=e124]:
+          - generic [ref=e125]:
+            - generic [ref=e126]: Market cap
+            - strong [ref=e127]: $4.7T
+          - generic [ref=e128]:
+            - generic [ref=e129]: P / E
+            - strong [ref=e130]: 41.7x
+          - generic [ref=e131]:
+            - generic [ref=e132]: PEG
+            - strong [ref=e133]: "5.50"
+          - generic [ref=e134]:
+            - generic [ref=e135]: Price / book
+            - strong [ref=e136]: 63.3x
+        - generic "Data freshness" [ref=e137]:
+          - generic [ref=e138]:
+            - generic [ref=e139]: Financial filing
+            - strong [ref=e140]: Jul 31, 2026
+            - generic [ref=e141]: cached
+          - generic [ref=e142]:
+            - generic [ref=e143]: Quote updated
+            - strong [ref=e144]: Aug 27, 7:00 AM UTC
+            - generic [ref=e145]: cached
+          - generic [ref=e146]:
+            - generic [ref=e147]: Estimates updated
+            - strong [ref=e148]: Unavailable
+            - generic [ref=e149]: unavailable
+          - generic [ref=e150]:
+            - generic [ref=e151]: Comparable set
+            - strong [ref=e152]: Unavailable
+            - generic [ref=e153]: unavailable
+      - generic [ref=e2066]:
+        - generic [ref=e2067]:
+          - generic [ref=e2068]:
+            - generic [ref=e2069]: MULTIPLE-BASED ANALYSIS
+            - heading "Build a five-year valuation" [level=2] [ref=e2070]
+            - paragraph [ref=e2071]: Project earnings, apply an exit P/E, and compare the result with today's market value.
+          - generic [ref=e2072]:
+            - tablist "Valuation basis" [ref=e2073]:
+              - tab "Net income" [selected] [ref=e2074] [cursor=pointer]
+              - tab "EPS" [ref=e2075] [cursor=pointer]
+            - generic [ref=e2076]: Saved in this browser
+        - generic [ref=e2077]:
+          - generic [ref=e2078]:
+            - generic [ref=e2079]: Starting net income
+            - strong [ref=e2080]: $128.9B
+            - generic [ref=e2081]: Trailing four quarters
+          - generic [ref=e2082]:
+            - generic [ref=e2083]: Historical CAGR
+            - strong [ref=e2084]: 10.5%
+            - generic [ref=e2085]: 10 fiscal years available
+          - generic [ref=e2086]:
+            - generic [ref=e2087]: Diluted shares
+            - strong [ref=e2088]: 14.7B shares
+            - generic [ref=e2089]: "-4.2% historical CAGR"
+          - generic [ref=e2090]:
+            - generic [ref=e2091]: Current market cap
+            - strong [ref=e2092]: $4.7T
+            - generic [ref=e2093]: $319.70 per share
+          - generic [ref=e2094]:
+            - generic [ref=e2095]: Base case
+            - strong [ref=e2096]: Undervalued
+            - generic [ref=e2097]: 13.6% annual return
+        - generic [ref=e2098]:
+          - generic [ref=e2099]:
+            - generic [ref=e2100]:
+              - generic [ref=e2101]:
+                - heading "Model assumptions" [level=3] [ref=e2102]
+                - paragraph [ref=e2103]: Set a growth rate and exit P/E for each case.
+              - button "Reset" [ref=e2104] [cursor=pointer]
+            - generic [ref=e2108]:
+              - generic [ref=e2109]:
+                - generic [ref=e2110]: Forecast years
+                - spinbutton "Forecast years Projection horizon" [ref=e2111]: "5"
+                - generic [ref=e2112]: Projection horizon
+              - generic [ref=e2113]:
+                - generic [ref=e2114]: Annual share change
+                - generic [ref=e2115]:
+                  - spinbutton "Annual share change % Negative means buybacks" [ref=e2116]: "-4.2"
+                  - generic: "%"
+                - generic [ref=e2117]: Negative means buybacks
+            - generic [ref=e2118]:
+              - group "Bear" [ref=e2119]:
+                - text: Bear
+                - generic [ref=e2120]:
+                  - generic [ref=e2121]: Income growth
+                  - generic [ref=e2122]:
+                    - spinbutton "Income growth %" [ref=e2123]: "5.5"
+                    - generic: "%"
+                - generic [ref=e2124]:
+                  - text: Exit P/E
+                  - generic [ref=e2125]:
+                    - spinbutton "Exit P/E x" [ref=e2126]: "36.7"
+                    - generic: x
+              - group "Base" [ref=e2127]:
+                - text: Base
+                - generic [ref=e2128]:
+                  - generic [ref=e2129]: Income growth
+                  - generic [ref=e2130]:
+                    - spinbutton "Income growth %" [ref=e2131]: "10.5"
+                    - generic: "%"
+                - generic [ref=e2132]:
+                  - text: Exit P/E
+                  - generic [ref=e2133]:
+                    - spinbutton "Exit P/E x" [ref=e2134]: "41.7"
+                    - generic: x
+              - group "Bull" [ref=e2135]:
+                - text: Bull
+                - generic [ref=e2136]:
+                  - generic [ref=e2137]: Income growth
+                  - generic [ref=e2138]:
+                    - spinbutton "Income growth %" [ref=e2139]: "15.5"
+                    - generic: "%"
+                - generic [ref=e2140]:
+                  - text: Exit P/E
+                  - generic [ref=e2141]:
+                    - spinbutton "Exit P/E x" [ref=e2142]: "46.7"
+                    - generic: x
+            - paragraph [ref=e2143]:
+              - text: Projected earnings = current earnings × (1 + growth rate)
+              - superscript [ref=e2144]: years
+              - text: . Projected value = earnings × exit P/E. PEG = exit P/E ÷ growth percentage.
+          - generic [ref=e2145]:
+            - generic [ref=e2147]:
+              - heading "5-year earnings path" [level=3] [ref=e2148]
+              - paragraph [ref=e2149]: Bear, base, and bull outcomes from the same starting point.
+            - img "5-year net income projection" [ref=e2150]:
+              - application [ref=e2153]:
+                - generic [ref=e2175]:
+                  - generic [ref=e2176]:
+                    - generic [ref=e2177]: Today
+                    - generic [ref=e2179]: Y1
+                    - generic [ref=e2181]: Y2
+                    - generic [ref=e2183]: Y3
+                    - generic [ref=e2185]: Y4
+                    - generic [ref=e2187]: Y5
+                  - generic [ref=e2189]:
+                    - generic [ref=e2190]: $0
+                    - generic [ref=e2192]: $70B
+                    - generic [ref=e2194]: $140B
+                    - generic [ref=e2196]: $210B
+                    - generic [ref=e2198]: $280B
+            - generic [ref=e2200]:
+              - generic [ref=e2201]: Bear
+              - generic [ref=e2202]: Base
+              - generic [ref=e2203]: Bull
+        - generic [ref=e2204]:
+          - generic [ref=e2206]:
+            - heading "Scenario outcomes" [level=3] [ref=e2207]
+            - paragraph [ref=e2208]: Projected values are compared with the current price and market capitalization.
+          - generic [ref=e2209]:
+            - article [ref=e2210]:
+              - generic [ref=e2211]:
+                - generic [ref=e2212]: Bear
+                - strong [ref=e2213]: Fairly valued
+              - generic [ref=e2214]:
+                - text: Projected share price
+                - strong [ref=e2215]: $518.65
+                - text: 32.2% total upside
+              - generic [ref=e2216]:
+                - generic [ref=e2217]:
+                  - term [ref=e2218]: Market cap
+                  - definition [ref=e2219]: $6.2T
+                - generic [ref=e2220]:
+                  - term [ref=e2221]: Net income
+                  - definition [ref=e2222]: $168.3B
+                - generic [ref=e2223]:
+                  - term [ref=e2224]: EPS
+                  - definition [ref=e2225]: $14.15
+                - generic [ref=e2226]:
+                  - term [ref=e2227]: Diluted shares
+                  - definition [ref=e2228]: 11.9B shares
+                - generic [ref=e2229]:
+                  - term [ref=e2230]: Annual return
+                  - definition [ref=e2231]: 5.7%
+                - generic [ref=e2232]:
+                  - term [ref=e2233]: PEG
+                  - definition [ref=e2234]: "6.69"
+            - article [ref=e2235]:
+              - generic [ref=e2236]:
+                - generic [ref=e2237]: Base
+                - strong [ref=e2238]: Undervalued
+              - generic [ref=e2239]:
+                - text: Projected share price
+                - strong [ref=e2240]: $742.99
+                - text: 89.4% total upside
+              - generic [ref=e2241]:
+                - generic [ref=e2242]:
+                  - term [ref=e2243]: Market cap
+                  - definition [ref=e2244]: $8.8T
+                - generic [ref=e2245]:
+                  - term [ref=e2246]: Net income
+                  - definition [ref=e2247]: $212.2B
+                - generic [ref=e2248]:
+                  - term [ref=e2249]: EPS
+                  - definition [ref=e2250]: $17.84
+                - generic [ref=e2251]:
+                  - term [ref=e2252]: Diluted shares
+                  - definition [ref=e2253]: 11.9B shares
+                - generic [ref=e2254]:
+                  - term [ref=e2255]: Annual return
+                  - definition [ref=e2256]: 13.6%
+                - generic [ref=e2257]:
+                  - term [ref=e2258]: PEG
+                  - definition [ref=e2259]: "3.98"
+            - article [ref=e2260]:
+              - generic [ref=e2261]:
+                - generic [ref=e2262]: Bull
+                - strong [ref=e2263]: Undervalued
+              - generic [ref=e2264]:
+                - text: Projected share price
+                - strong [ref=e2265]: $1,038.32
+                - text: 164.7% total upside
+              - generic [ref=e2266]:
+                - generic [ref=e2267]:
+                  - term [ref=e2268]: Market cap
+                  - definition [ref=e2269]: $12.4T
+                - generic [ref=e2270]:
+                  - term [ref=e2271]: Net income
+                  - definition [ref=e2272]: $264.8B
+                - generic [ref=e2273]:
+                  - term [ref=e2274]: EPS
+                  - definition [ref=e2275]: $22.26
+                - generic [ref=e2276]:
+                  - term [ref=e2277]: Diluted shares
+                  - definition [ref=e2278]: 11.9B shares
+                - generic [ref=e2279]:
+                  - term [ref=e2280]: Annual return
+                  - definition [ref=e2281]: 21.5%
+                - generic [ref=e2282]:
+                  - term [ref=e2283]: PEG
+                  - definition [ref=e2284]: "3.01"
+          - paragraph [ref=e2285]: "Valuation label: under 4% implied annual return is Overvalued, 4% to under 10% is Fairly valued, and 10% or more is Undervalued."
+        - generic [ref=e2286]:
+          - generic [ref=e2287]:
+            - generic [ref=e2288]:
+              - heading "Financial history" [level=3] [ref=e2289]
+              - paragraph [ref=e2290]: Review the earnings record before choosing a forward rate.
+            - tablist "History frequency" [ref=e2291]:
+              - tab "Annual" [selected] [ref=e2292] [cursor=pointer]
+              - tab "Quarterly" [ref=e2293] [cursor=pointer]
+          - tablist "Historical metric" [ref=e2294]:
+            - tab "Net income" [selected] [ref=e2295] [cursor=pointer]
+            - tab "EPS" [ref=e2296] [cursor=pointer]
+            - tab "Share count" [ref=e2297] [cursor=pointer]
+            - tab "Revenue" [ref=e2298] [cursor=pointer]
+            - tab "Margins" [ref=e2299] [cursor=pointer]
+          - img "annual Net income history" [ref=e2300]:
+            - application [ref=e2303]:
+              - generic [ref=e2323]:
+                - generic [ref=e2324]:
+                  - generic [ref=e2325]: FY 2016
+                  - generic [ref=e2327]: FY 2019
+                  - generic [ref=e2329]: FY 2022
+                  - generic [ref=e2331]: FY 2025
+                - generic [ref=e2333]:
+                  - generic [ref=e2334]: $0
+                  - generic [ref=e2336]: $30B
+                  - generic [ref=e2338]: $60B
+                  - generic [ref=e2340]: $90B
+                  - generic [ref=e2342]: $120B
+          - generic [ref=e2344]:
+            - generic [ref=e2345]:
+              - generic [ref=e2346]: Revenue CAGR
+              - strong [ref=e2347]: 7.6%
+            - generic [ref=e2348]:
+              - generic [ref=e2349]: Net income CAGR
+              - strong [ref=e2350]: 10.5%
+            - generic [ref=e2351]:
+              - generic [ref=e2352]: EPS CAGR
+              - strong [ref=e2353]: 15.3%
+            - generic [ref=e2354]:
+              - generic [ref=e2355]: Share count CAGR
+              - strong [ref=e2356]: "-4.2%"
+          - table [ref=e2358]:
+            - rowgroup [ref=e2359]:
+              - row [ref=e2360]:
+                - columnheader "Period" [ref=e2361]
+                - columnheader "Revenue" [ref=e2362]
+                - columnheader "Growth" [ref=e2363]
+                - columnheader "Net income" [ref=e2364]
+                - columnheader "Growth" [ref=e2365]
+                - columnheader "Net margin" [ref=e2366]
+                - columnheader "Diluted shares" [ref=e2367]
+                - columnheader "Growth" [ref=e2368]
+                - columnheader "EPS" [ref=e2369]
+                - columnheader "Growth" [ref=e2370]
+            - rowgroup [ref=e2371]:
+              - row [ref=e2372]:
+                - rowheader "FY 2025" [ref=e2373]
+                - cell "$416.2B" [ref=e2374]
+                - cell "+6.4%" [ref=e2375]
+                - cell "$112B" [ref=e2377]
+                - cell "+19.5%" [ref=e2378]
+                - cell "26.9%" [ref=e2380]
+                - cell "15B shares" [ref=e2381]
+                - cell "-2.6%" [ref=e2382]
+                - cell "$7.46" [ref=e2384]
+                - cell "+22.7%" [ref=e2385]
+              - row [ref=e2387]:
+                - rowheader "FY 2024" [ref=e2388]
+                - cell "$391B" [ref=e2389]
+                - cell "+2.0%" [ref=e2390]
+                - cell "$93.7B" [ref=e2392]
+                - cell "-3.4%" [ref=e2393]
+                - cell "24.0%" [ref=e2395]
+                - cell "15.4B shares" [ref=e2396]
+                - cell "-2.6%" [ref=e2397]
+                - cell "$6.08" [ref=e2399]
+                - cell "-0.8%" [ref=e2400]
+              - row [ref=e2402]:
+                - rowheader "FY 2023" [ref=e2403]
+                - cell "$383.3B" [ref=e2404]
+                - cell "-2.8%" [ref=e2405]
+                - cell "$97B" [ref=e2407]
+                - cell "-2.8%" [ref=e2408]
+                - cell "25.3%" [ref=e2410]
+                - cell "15.8B shares" [ref=e2411]
+                - cell "-3.1%" [ref=e2412]
+                - cell "$6.13" [ref=e2414]
+                - cell "+0.3%" [ref=e2415]
+              - row [ref=e2417]:
+                - rowheader "FY 2022" [ref=e2418]
+                - cell "$394.3B" [ref=e2419]
+                - cell "+7.8%" [ref=e2420]
+                - cell "$99.8B" [ref=e2422]
+                - cell "+5.4%" [ref=e2423]
+                - cell "25.3%" [ref=e2425]
+                - cell "16.3B shares" [ref=e2426]
+                - cell "-3.2%" [ref=e2427]
+                - cell "$6.11" [ref=e2429]
+                - cell "+8.9%" [ref=e2430]
+              - row [ref=e2432]:
+                - rowheader "FY 2021" [ref=e2433]
+                - cell "$365.8B" [ref=e2434]
+                - cell "+33.3%" [ref=e2435]
+                - cell "$94.7B" [ref=e2437]
+                - cell "+64.9%" [ref=e2438]
+                - cell "25.9%" [ref=e2440]
+                - cell "16.9B shares" [ref=e2441]
+                - cell "-3.8%" [ref=e2442]
+                - cell "$5.61" [ref=e2444]
+                - cell "+71.0%" [ref=e2445]
+              - row [ref=e2447]:
+                - rowheader "FY 2020" [ref=e2448]
+                - cell "$274.5B" [ref=e2449]
+                - cell "+5.5%" [ref=e2450]
+                - cell "$57.4B" [ref=e2452]
+                - cell "+3.9%" [ref=e2453]
+                - cell "20.9%" [ref=e2455]
+                - cell "17.5B shares" [ref=e2456]
+                - cell "-5.7%" [ref=e2457]
+                - cell "$3.28" [ref=e2459]
+                - cell "+10.4%" [ref=e2460]
+              - row [ref=e2462]:
+                - rowheader "FY 2019" [ref=e2463]
+                - cell "$260.2B" [ref=e2464]
+                - cell "-2.0%" [ref=e2465]
+                - cell "$55.3B" [ref=e2467]
+                - cell "-7.2%" [ref=e2468]
+                - cell "21.2%" [ref=e2470]
+                - cell "18.6B shares" [ref=e2471]
+                - cell "-7.0%" [ref=e2472]
+                - cell "$2.97" [ref=e2474]
+                - cell "-0.3%" [ref=e2475]
+              - row [ref=e2477]:
+                - rowheader "FY 2018" [ref=e2478]
+                - cell "$265.6B" [ref=e2479]
+                - cell "+15.9%" [ref=e2480]
+                - cell "$59.5B" [ref=e2482]
+                - cell "+23.1%" [ref=e2483]
+                - cell "22.4%" [ref=e2485]
+                - cell "20B shares" [ref=e2486]
+                - cell "-4.8%" [ref=e2487]
+                - cell "$2.98" [ref=e2489]
+                - cell "+29.4%" [ref=e2490]
+              - row [ref=e2492]:
+                - rowheader "FY 2017" [ref=e2493]
+                - cell "$229.2B" [ref=e2494]
+                - cell "+6.3%" [ref=e2495]
+                - cell "$48.4B" [ref=e2497]
+                - cell "+5.8%" [ref=e2498]
+                - cell "21.1%" [ref=e2500]
+                - cell "21B shares" [ref=e2501]
+                - cell "-4.5%" [ref=e2502]
+                - cell "$2.30" [ref=e2504]
+                - cell "+10.8%" [ref=e2505]
+              - row [ref=e2507]:
+                - rowheader "FY 2016" [ref=e2508]
+                - cell "$215.6B" [ref=e2509]
+                - cell "N/M" [ref=e2510]
+                - cell "$45.7B" [ref=e2512]
+                - cell "N/M" [ref=e2513]
+                - cell "21.2%" [ref=e2515]
+                - cell "22B shares" [ref=e2516]
+                - cell "N/M" [ref=e2517]
+                - cell "$2.08" [ref=e2519]
+                - cell "N/M" [ref=e2520]
+          - paragraph [ref=e2522]: Quarterly growth uses the same fiscal quarter from the prior year, with sequential QoQ growth shown underneath. N/M means the percentage is not meaningful.
+  - generic [ref=e1231]: $30B

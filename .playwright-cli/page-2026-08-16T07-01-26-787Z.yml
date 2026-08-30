@@ -1,0 +1,331 @@
+- generic [ref=e1]:
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - generic "AplexAnalysis home" [ref=e5]:
+        - generic [ref=e6]:
+          - strong [ref=e7]: Aplex
+          - text: Analysis
+      - generic [ref=e8]:
+        - generic [ref=e9]: Search public companies
+        - generic [ref=e10]:
+          - generic [ref=e12]:
+            - generic: Ticker or company
+            - generic [ref=e15]:
+              - combobox "Search public companies Ticker or company" [ref=e16]: AAPL
+              - alert [ref=e17]
+          - button "Analyze" [ref=e19] [cursor=pointer]
+      - button "Switch to light mode" [ref=e23] [cursor=pointer]
+    - complementary "Research sections" [ref=e34]:
+      - navigation [ref=e35]:
+        - button "Overview" [ref=e36] [cursor=pointer]
+        - button "Financials" [active] [ref=e43] [cursor=pointer]
+        - button "Valuation" [ref=e47] [cursor=pointer]
+        - button "Buy Target" [ref=e61] [cursor=pointer]
+        - button "Comps" [ref=e66] [cursor=pointer]
+        - button "Earnings" [ref=e70] [cursor=pointer]
+        - button "News" [ref=e77] [cursor=pointer]
+        - button "Filings" [ref=e83] [cursor=pointer]
+        - button "Risks" [ref=e89] [cursor=pointer]
+        - button "AI Research · Preview" [ref=e95] [cursor=pointer]
+      - generic [ref=e101]: Swipe sideways for more sections
+    - main [ref=e102]:
+      - generic [ref=e123]:
+        - generic [ref=e124]:
+          - generic [ref=e125]: AA
+          - generic [ref=e126]:
+            - generic [ref=e127]:
+              - heading "Apple Inc." [level=1] [ref=e128]
+              - generic [ref=e129]: AAPL
+              - generic "Fresh" [ref=e131]
+              - button "Refresh data" [ref=e132] [cursor=pointer]
+            - paragraph [ref=e137]: Nasdaq / Technology / Computer Manufacturing
+            - generic [ref=e138]:
+              - strong [ref=e139]: $305.93
+              - generic [ref=e140]: Delayed market price
+            - generic [ref=e141]:
+              - text: As of Aug 13, 2026 via
+              - link "Nasdaq delayed quote" [ref=e142] [cursor=pointer]:
+                - /url: https://www.nasdaq.com/market-activity/stocks/aapl
+        - generic "Company market snapshot" [ref=e143]:
+          - generic [ref=e144]:
+            - generic [ref=e145]: Market cap
+            - strong [ref=e146]: $4.5T
+          - generic [ref=e147]:
+            - generic [ref=e148]: P / E
+            - strong [ref=e149]: 39.9x
+          - generic [ref=e150]:
+            - generic [ref=e151]: PEG
+            - strong [ref=e152]: "5.26"
+          - generic [ref=e153]:
+            - generic [ref=e154]: Price / book
+            - strong [ref=e155]: 60.6x
+        - generic "Data freshness" [ref=e156]:
+          - generic [ref=e157]:
+            - generic [ref=e158]: Financial filing
+            - strong [ref=e159]: Oct 30, 2025
+            - generic [ref=e160]: live
+          - generic [ref=e161]:
+            - generic [ref=e162]: Quote updated
+            - strong [ref=e163]: Aug 13, 12:00 AM
+            - generic [ref=e164]: live
+          - generic [ref=e165]:
+            - generic [ref=e166]: Estimates updated
+            - strong [ref=e167]: Unavailable
+            - generic [ref=e168]: live
+          - generic [ref=e169]:
+            - generic [ref=e170]: Comparable set
+            - strong [ref=e171]: Unavailable
+            - generic [ref=e172]: unavailable
+      - generic [ref=e1248]:
+        - generic [ref=e1249]:
+          - generic [ref=e1250]:
+            - heading "Financial explorer" [level=2] [ref=e1251]
+            - paragraph [ref=e1252]: Compare annual income, profitability, cash generation and balance sheet strength from standardized SEC facts.
+          - generic [ref=e1253]:
+            - generic [ref=e1254]: History
+            - strong [ref=e1255]: 2016-2025
+            - generic [ref=e1256]: 10 annual and 24 quarterly periods
+        - generic [ref=e1257]:
+          - generic [ref=e1258]:
+            - tablist "Financial statement views" [ref=e1259]:
+              - tab "Income statement" [selected] [ref=e1260] [cursor=pointer]
+              - tab "Margins" [ref=e1261] [cursor=pointer]
+              - tab "Cash flow" [ref=e1262] [cursor=pointer]
+              - tab "Balance sheet" [ref=e1263] [cursor=pointer]
+            - generic [ref=e1264]:
+              - generic [ref=e1265]:
+                - heading "Income statement" [level=3] [ref=e1266]
+                - paragraph [ref=e1267]: Revenue and earnings from standardized SEC filings
+              - generic [ref=e1268]:
+                - tablist "Financial reporting frequency" [ref=e1269]:
+                  - tab "Annual" [selected] [ref=e1270] [cursor=pointer]
+                  - tab "Quarterly" [ref=e1271] [cursor=pointer]
+                - generic [ref=e1272]: 10 annual periods
+            - generic "Income statement chart series" [ref=e1273]:
+              - button "Revenue" [pressed] [ref=e1274] [cursor=pointer]
+              - button "Gross profit" [pressed] [ref=e1276] [cursor=pointer]
+              - button "Operating income" [pressed] [ref=e1278] [cursor=pointer]
+              - button "Net income" [pressed] [ref=e1280] [cursor=pointer]
+            - img "Income statement history from FY 2016 through FY 2025" [ref=e1282]:
+              - application [ref=e1285]:
+                - generic [ref=e1367]:
+                  - generic [ref=e1368]:
+                    - generic [ref=e1369]: FY 2016
+                    - generic [ref=e1371]: FY 2017
+                    - generic [ref=e1373]: FY 2018
+                    - generic [ref=e1375]: FY 2019
+                    - generic [ref=e1377]: FY 2020
+                    - generic [ref=e1379]: FY 2021
+                    - generic [ref=e1381]: FY 2022
+                    - generic [ref=e1383]: FY 2023
+                    - generic [ref=e1385]: FY 2024
+                    - generic [ref=e1387]: FY 2025
+                  - generic [ref=e1389]:
+                    - generic [ref=e1390]: $0.0B
+                    - generic [ref=e1392]: $150.0B
+                    - generic [ref=e1394]: $300.0B
+                    - generic [ref=e1396]: $450.0B
+                    - generic [ref=e1398]: $600.0B
+            - generic [ref=e1400]:
+              - generic [ref=e1401]:
+                - generic [ref=e1402]: Revenue
+                - strong [ref=e1403]: $416.2B
+                - generic [ref=e1404]: FY 2025
+              - generic [ref=e1405]:
+                - generic [ref=e1406]: Gross profit
+                - strong [ref=e1407]: $195.2B
+                - generic [ref=e1408]: FY 2025
+              - generic [ref=e1409]:
+                - generic [ref=e1410]: Operating income
+                - strong [ref=e1411]: $133.1B
+                - generic [ref=e1412]: FY 2025
+              - generic [ref=e1413]:
+                - generic [ref=e1414]: Net income
+                - strong [ref=e1415]: $112B
+                - generic [ref=e1416]: FY 2025
+            - generic [ref=e1417]: Swipe sideways to see all financial columns
+            - table [ref=e1419]:
+              - rowgroup [ref=e1420]:
+                - row [ref=e1421]:
+                  - columnheader "Fiscal year" [ref=e1422]
+                  - columnheader "Revenue" [ref=e1423]
+                  - columnheader "Gross profit" [ref=e1424]
+                  - columnheader "Operating income" [ref=e1425]
+                  - columnheader "Net income" [ref=e1426]
+              - rowgroup [ref=e1427]:
+                - row [ref=e1428]:
+                  - rowheader "FY 2025" [ref=e1429]
+                  - cell "$416.2B" [ref=e1430]
+                  - cell "$195.2B" [ref=e1432]
+                  - cell "$133.1B" [ref=e1434]
+                  - cell "$112B" [ref=e1436]
+                - row [ref=e1438]:
+                  - rowheader "FY 2024" [ref=e1439]
+                  - cell "$391B" [ref=e1440]
+                  - cell "$180.7B" [ref=e1442]
+                  - cell "$123.2B" [ref=e1444]
+                  - cell "$93.7B" [ref=e1446]
+                - row [ref=e1448]:
+                  - rowheader "FY 2023" [ref=e1449]
+                  - cell "$383.3B" [ref=e1450]
+                  - cell "$169.1B" [ref=e1452]
+                  - cell "$114.3B" [ref=e1454]
+                  - cell "$97B" [ref=e1456]
+                - row [ref=e1458]:
+                  - rowheader "FY 2022" [ref=e1459]
+                  - cell "$394.3B" [ref=e1460]
+                  - cell "$170.8B" [ref=e1462]
+                  - cell "$119.4B" [ref=e1464]
+                  - cell "$99.8B" [ref=e1466]
+                - row [ref=e1468]:
+                  - rowheader "FY 2021" [ref=e1469]
+                  - cell "$365.8B" [ref=e1470]
+                  - cell "$152.8B" [ref=e1472]
+                  - cell "$108.9B" [ref=e1474]
+                  - cell "$94.7B" [ref=e1476]
+                - row [ref=e1478]:
+                  - rowheader "FY 2020" [ref=e1479]
+                  - cell "$274.5B" [ref=e1480]
+                  - cell "$105B" [ref=e1482]
+                  - cell "$66.3B" [ref=e1484]
+                  - cell "$57.4B" [ref=e1486]
+                - row [ref=e1488]:
+                  - rowheader "FY 2019" [ref=e1489]
+                  - cell "$260.2B" [ref=e1490]
+                  - cell "$98.4B" [ref=e1492]
+                  - cell "$63.9B" [ref=e1494]
+                  - cell "$55.3B" [ref=e1496]
+                - row [ref=e1498]:
+                  - rowheader "FY 2018" [ref=e1499]
+                  - cell "$265.6B" [ref=e1500]
+                  - cell "$101.8B" [ref=e1502]
+                  - cell "$70.9B" [ref=e1504]
+                  - cell "$59.5B" [ref=e1506]
+                - row [ref=e1508]:
+                  - rowheader "FY 2017" [ref=e1509]
+                  - cell "$229.2B" [ref=e1510]
+                  - cell "$88.2B" [ref=e1512]
+                  - cell "$61.3B" [ref=e1514]
+                  - cell "$48.4B" [ref=e1516]
+                - row [ref=e1518]:
+                  - rowheader "FY 2016" [ref=e1519]
+                  - cell "$215.6B" [ref=e1520]
+                  - cell "$84.3B" [ref=e1522]
+                  - cell "$60B" [ref=e1524]
+                  - cell "$45.7B" [ref=e1526]
+          - paragraph [ref=e1528]: Quarterly cash flow values are shown as stand-alone quarters. Q4 may be calculated as the fiscal-year total minus Q1, Q2 and Q3. Missing values are shown as N/A.
+        - generic [ref=e1529]:
+          - generic [ref=e1530]:
+            - generic [ref=e1531]:
+              - heading "Analyst EPS estimates" [level=3] [ref=e1532]
+              - paragraph [ref=e1533]: Forward consensus ranges for upcoming quarters and fiscal years.
+            - 'link "Source: Nasdaq analyst consensus" [ref=e1534] [cursor=pointer]':
+              - /url: https://www.nasdaq.com/market-activity/stocks/aapl/earnings
+          - generic [ref=e1535]:
+            - generic [ref=e1536]:
+              - heading "Quarterly estimates" [level=4] [ref=e1537]
+              - generic [ref=e1538]: Swipe sideways to see all estimate columns
+              - table [ref=e1540]:
+                - rowgroup [ref=e1541]:
+                  - row [ref=e1542]:
+                    - columnheader "Period" [ref=e1543]
+                    - columnheader "Consensus EPS" [ref=e1544]
+                    - columnheader "Range" [ref=e1545]
+                    - columnheader "Analysts" [ref=e1546]
+                    - columnheader "Revisions" [ref=e1547]
+                - rowgroup [ref=e1548]:
+                  - row [ref=e1549]:
+                    - rowheader "Sep 2026" [ref=e1550]
+                    - cell "$1.98" [ref=e1551]
+                    - cell "$1.91 to $2.09" [ref=e1552]
+                    - cell "8" [ref=e1553]
+                    - cell "+2 / -4" [ref=e1554]:
+                      - generic [ref=e1555]: "+2"
+                      - text: /
+                      - generic [ref=e1556]: "-4"
+                  - row [ref=e1557]:
+                    - rowheader "Dec 2026" [ref=e1558]
+                    - cell "$2.91" [ref=e1559]
+                    - cell "$2.68 to $3.10" [ref=e1560]
+                    - cell "8" [ref=e1561]
+                    - cell "+1 / -4" [ref=e1562]:
+                      - generic [ref=e1563]: "+1"
+                      - text: /
+                      - generic [ref=e1564]: "-4"
+                  - row [ref=e1565]:
+                    - rowheader "Mar 2027" [ref=e1566]
+                    - cell "$2.16" [ref=e1567]
+                    - cell "$2.04 to $2.42" [ref=e1568]
+                    - cell "8" [ref=e1569]
+                    - cell "+1 / -0" [ref=e1570]:
+                      - generic [ref=e1571]: "+1"
+                      - text: /
+                      - generic [ref=e1572]: "-0"
+                  - row [ref=e1573]:
+                    - rowheader "Jun 2027" [ref=e1574]
+                    - cell "$2.09" [ref=e1575]
+                    - cell "$1.93 to $2.35" [ref=e1576]
+                    - cell "8" [ref=e1577]
+                    - cell "+3 / -0" [ref=e1578]:
+                      - generic [ref=e1579]: "+3"
+                      - text: /
+                      - generic [ref=e1580]: "-0"
+                  - row [ref=e1581]:
+                    - rowheader "Sep 2027" [ref=e1582]
+                    - cell "$2.72" [ref=e1583]
+                    - cell "$1.97 to $6.11" [ref=e1584]
+                    - cell "8" [ref=e1585]
+                    - cell "+1 / -0" [ref=e1586]:
+                      - generic [ref=e1587]: "+1"
+                      - text: /
+                      - generic [ref=e1588]: "-0"
+            - generic [ref=e1589]:
+              - heading "Annual estimates" [level=4] [ref=e1590]
+              - generic [ref=e1591]: Swipe sideways to see all estimate columns
+              - table [ref=e1593]:
+                - rowgroup [ref=e1594]:
+                  - row [ref=e1595]:
+                    - columnheader "Period" [ref=e1596]
+                    - columnheader "Consensus EPS" [ref=e1597]
+                    - columnheader "Range" [ref=e1598]
+                    - columnheader "Analysts" [ref=e1599]
+                    - columnheader "Revisions" [ref=e1600]
+                - rowgroup [ref=e1601]:
+                  - row [ref=e1602]:
+                    - rowheader "Sep 2026" [ref=e1603]
+                    - cell "$8.76" [ref=e1604]
+                    - cell "$8.73 to $8.84" [ref=e1605]
+                    - cell "6" [ref=e1606]
+                    - cell "+2 / -4" [ref=e1607]:
+                      - generic [ref=e1608]: "+2"
+                      - text: /
+                      - generic [ref=e1609]: "-4"
+                  - row [ref=e1610]:
+                    - rowheader "Sep 2027" [ref=e1611]
+                    - cell "$9.52" [ref=e1612]
+                    - cell "$9.01 to $10.15" [ref=e1613]
+                    - cell "13" [ref=e1614]
+                    - cell "+4 / -6" [ref=e1615]:
+                      - generic [ref=e1616]: "+4"
+                      - text: /
+                      - generic [ref=e1617]: "-6"
+                  - row [ref=e1618]:
+                    - rowheader "Sep 2028" [ref=e1619]
+                    - cell "$10.88" [ref=e1620]
+                    - cell "$10.35 to $11.46" [ref=e1621]
+                    - cell "3" [ref=e1622]
+                    - cell "+0 / -0" [ref=e1623]:
+                      - generic [ref=e1624]: "+0"
+                      - text: /
+                      - generic [ref=e1625]: "-0"
+                  - row [ref=e1626]:
+                    - rowheader "Sep 2029" [ref=e1627]
+                    - cell "$12.97" [ref=e1628]
+                    - cell "$12.97 to $12.97" [ref=e1629]
+                    - cell "1" [ref=e1630]
+                    - cell "+0 / -0" [ref=e1631]:
+                      - generic [ref=e1632]: "+0"
+                      - text: /
+                      - generic [ref=e1633]: "-0"
+          - paragraph [ref=e1634]: Analyst EPS estimates are consensus forecasts, not company guidance.
+  - generic [ref=e1247]: FY 2016

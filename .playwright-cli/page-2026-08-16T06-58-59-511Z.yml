@@ -1,0 +1,67 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic "AplexAnalysis home" [ref=e5]:
+      - generic [ref=e6]:
+        - strong [ref=e7]: Aplex
+        - text: Analysis
+    - generic [ref=e8]:
+      - generic [ref=e9]: Search public companies
+      - generic [ref=e10]:
+        - generic [ref=e12]:
+          - generic: Ticker or company
+          - generic [ref=e15]:
+            - combobox "Search public companies Ticker or company" [ref=e16]: AAPL
+            - alert [ref=e17]
+        - button "Analyze" [ref=e19] [cursor=pointer]
+    - button "Switch to light mode" [ref=e23] [cursor=pointer]
+  - complementary "Research sections" [ref=e34]:
+    - navigation [ref=e35]:
+      - button "Overview" [ref=e36] [cursor=pointer]
+      - button "Financials" [ref=e43] [cursor=pointer]
+      - button "Valuation" [ref=e47] [cursor=pointer]
+      - button "Buy Target" [ref=e61] [cursor=pointer]
+      - button "Comps" [ref=e66] [cursor=pointer]
+      - button "Earnings" [ref=e70] [cursor=pointer]
+      - button "News" [ref=e77] [cursor=pointer]
+      - button "Filings" [ref=e83] [cursor=pointer]
+      - button "Risks" [ref=e89] [cursor=pointer]
+      - button "AI Research · Preview" [ref=e95] [cursor=pointer]
+    - generic [ref=e101]: Swipe sideways for more sections
+  - main [ref=e102]:
+    - generic [ref=e103]:
+      - generic [ref=e104]:
+        - paragraph
+        - paragraph [ref=e105]: Retrieving and normalizing AAPL filings
+      - generic [ref=e106]:
+        - generic [ref=e108]:
+          - paragraph
+          - paragraph
+          - paragraph
+        - generic [ref=e110]:
+          - paragraph
+          - paragraph
+          - paragraph
+        - generic [ref=e112]:
+          - paragraph
+          - paragraph
+          - paragraph
+        - generic [ref=e114]:
+          - paragraph
+          - paragraph
+          - paragraph
+        - generic [ref=e116]:
+          - paragraph
+          - paragraph
+          - paragraph
+        - generic [ref=e118]:
+          - paragraph
+          - paragraph
+          - paragraph
+        - generic [ref=e120]:
+          - paragraph
+          - paragraph
+          - paragraph
+        - generic [ref=e122]:
+          - paragraph
+          - paragraph
+          - paragraph
