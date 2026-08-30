@@ -1,8 +1,0 @@
-- generic [active] [ref=e1]:
-  - generic [ref=e1247]: FY 2016
-  - generic [ref=e1540]:
-    - heading "This page couldn’t load" [level=1] [ref=e1543]
-    - paragraph [ref=e1544]: Reload to try again, or go back.
-    - generic [ref=e1545]:
-      - button "Reload" [ref=e1547] [cursor=pointer]
-      - button "Back" [ref=e1548] [cursor=pointer]
